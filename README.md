@@ -1,209 +1,702 @@
 # barto-router ⚡🤖
 
-> **Arquitectura de Inferencia Local Distribuida y Router Adaptativo de IA.**  
-> Maximiza el aprovechamiento de hardware reciclado (NVIDIA GT 1030 2GB + Ubuntu Server) como nodo auxiliar de IA por red local (LAN), protegiendo al 100% la VRAM y potencia de la estación principal de desarrollo (RTX 3050 / Unity3D / IDEs).
+> Arquitectura de inferencia local distribuida y router adaptativo de IA para aprovechar hardware heterogéneo mediante red local (LAN).
+
+`barto-router` permite utilizar un PC secundario como nodo de inferencia local, evitando que las tareas habituales de IA tengan que competir directamente por los recursos de la estación principal de desarrollo.
+
+El proyecto está orientado a escenarios donde la máquina principal ejecuta simultáneamente aplicaciones interactivas como Unity, IDEs, navegadores, compilaciones o herramientas gráficas.
 
 ---
 
-## 📌 1. Visión y Propósito del Proyecto
+## 📌 1. Visión y propósito
 
-En entornos de desarrollo interactivo (como el desarrollo de videojuegos con **Unity3D**, compilaciones o renderizado), correr modelos de lenguaje locales en la misma GPU compite directamente por la VRAM y provoca caídas severas de fotogramas, congelamiento del editor o cierres inesperados por falta de memoria gráfica.
+En una estación de trabajo con GPU limitada, ejecutar modelos de lenguaje localmente puede competir por VRAM y recursos de cómputo con las aplicaciones principales.
 
-**barto-router** soluciona este dilema convirtiendo un PC secundario de bajo costo en un **nodo esclavo de IA autónomo**:
-1. **El PC Secundario (Nodo Linux):** Absorbe todo el cómputo de inferencia (40–45 tokens/s) mediante `llama.cpp` y aceleración Vulkan sobre una GT 1030 de 2 GB.
-2. **El PC Principal (Windows):** Ejecuta un **Router Adaptativo en tiempo real** que intercepta las peticiones de desarrollo (desde OpenCode, Cursor, scripts o navegadores) y las despacha de forma invisible por la red local sin consumir un solo megabyte de la RTX 3050 principal.
+`barto-router` explora una arquitectura alternativa:
 
----
-
-## 🏗️ 2. Arquitectura del Sistema
-
-```
- ┌───────────────────────────────────────────────────────────┐
- │               PC PRINCIPAL (Estación de Trabajo)          │
- │                 Windows 11 · i7 · RTX 3050 6GB            │
- │                                                           │
- │   • Unity3D / Blender / IDEs (100% de VRAM reservada)     │
- │   • OpenCode / Navegador Web                              │
- │   • barto-router (Proxy Inteligente en 127.0.0.1:9000)     │
- └─────────────────────────────┬─────────────────────────────┘
-                               │
-                               │ LAN Gigabit / FastEthernet (< 4ms latencia)
-                               │ Puerto 8080 (API) / 50052 (RPC) / 22 (SSH)
-                               ▼
- ┌───────────────────────────────────────────────────────────┐
- │               PC SECUNDARIO (Nodo Auxiliar de IA)         │
- │           Ubuntu Server 24.04 LTS · AMD A8 · GT 1030 2GB  │
- │                                                           │
- │   • llama-server daemon (arranque automático con systemd) │
- │   • Backend Vulkan 1.3 optimizado para arquitectura Pascal│
- │   • Almacenamiento masivo /data (300 GB ext4)             │
- │   • Modelos: Llama 3.2 1B (45 t/s) · Qwen 2.5 1.5B (35 t/s│
- └───────────────────────────────────────────────────────────┘
+```text
+┌──────────────────────────────────────┐
+│         PC PRINCIPAL                 │
+│                                      │
+│  Windows · RTX 3050 6 GB             │
+│  Unity · IDEs · herramientas         │
+│                                      │
+│  barto-router                        │
+└──────────────────┬───────────────────┘
+                   │
+                   │ LAN
+                   ▼
+┌──────────────────────────────────────┐
+│         PC SECUNDARIO                │
+│                                      │
+│  Ubuntu Server · GT 1030 2 GB        │
+│  llama.cpp + Vulkan                  │
+│                                      │
+│  Inferencia local                    │
+└──────────────────────────────────────┘
 ```
 
----
-
-## 🚀 3. Guía Paso a Paso de Instalación
-
-### A. Preparación del Nodo Secundario (Ubuntu Server 24.04 LTS)
-1. **Instalación de Sistema:**
-   - Instalar Ubuntu Server 24.04 LTS en el disco destino (`ext4`), preservando el arranque dual UEFI/GRUB.
-   - Montar el almacenamiento secundario en `/data` mediante UUID en `/etc/fstab`.
-2. **Driver Gráfico Propietario (NVIDIA GT 1030 Pascal):**
-   > *Regla crítica:* La GT 1030 (chip GP108) carece de procesador GSP. No utilizar drivers `-open`.
-   ```bash
-   sudo apt update
-   sudo apt install -y nvidia-driver-580
-   sudo apt-mark hold nvidia-driver-580 nvidia-dkms-580
-   ```
-3. **Instalación del Stack Vulkan y Herramientas de Compilación:**
-   ```bash
-   sudo apt install -y vulkan-tools libvulkan-dev glslc libshaderc-dev git cmake build-essential
-   ```
-4. **Compilación de `llama.cpp` a la medida de la CPU (AMD A8 sin AVX2):**
-   ```bash
-   git clone https://github.com/ggerganov/llama.cpp.git /data/repositories/llama.cpp
-   cd /data/repositories/llama.cpp
-   cmake -B build -DGGML_VULKAN=ON -DGGML_AVX2=OFF -DGGML_AVX512=OFF -DGGML_FMA=ON -DGGML_F16C=ON
-   cmake --build build --config Release -j3
-   ```
-5. **Descarga de Modelos Prevalidados (dentro del presupuesto de 2 GB VRAM):**
-   ```bash
-   mkdir -p /data/models
-   # Primario Rápido: Llama 3.2 1B (~770 MB)
-   curl -L -o /data/models/Llama-3.2-1B-Instruct-Q4_K_M.gguf 'https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf'
-   # Modelo de Código/Razonamiento: Qwen 2.5 1.5B (~1.05 GB)
-   curl -L -o /data/models/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf 'https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf'
-   # Embeddings para RAG: BGE-Small (~36 MB)
-   curl -L -o /data/models/bge-small-en-v1.5-q8_0.gguf 'https://huggingface.co/CompendiumLabs/bge-small-en-v1.5-gguf/resolve/main/bge-small-en-v1.5-q8_0.gguf'
-   ```
-6. **Configuración del Servicio Persistente (`systemd`):**
-   Crear `/etc/systemd/system/llama-server.service`:
-   ```ini
-   [Unit]
-   Description=Llama.cpp API Server (GT 1030 Vulkan)
-   After=network.target
-
-   [Service]
-   Type=simple
-   User=code
-   Group=code
-   WorkingDirectory=/data/repositories/llama.cpp
-   ExecStart=/data/repositories/llama.cpp/build/bin/llama-server -m /data/models/Llama-3.2-1B-Instruct-Q4_K_M.gguf -ngl 99 -c 4096 --host 0.0.0.0 --port 8080 --jinja --skip-chat-parsing
-   Restart=always
-   RestartSec=5
-
-   [Install]
-   WantedBy=multi-user.target
-   ```
-   Habilitar e iniciar:
-   ```bash
-   sudo systemctl daemon-reload
-   sudo systemctl enable --now llama-server.service
-   ```
+La arquitectura permite desplazar determinadas tareas de inferencia hacia el nodo secundario y conservar los recursos de la estación principal para las tareas interactivas cuando el escenario de routing así lo determina.
 
 ---
 
-### B. Configuración de barto-router en el PC Principal (Windows)
-1. Clonar este repositorio en tu PC de trabajo.
-2. Iniciar el router proxy inteligente:
-   ```powershell
-   python router.py
-   ```
-3. El router queda escuchando en `http://127.0.0.1:9000/v1` compatible con el estándar OpenAI.
-4. **Integración con OpenCode:** Configurar `opencode.jsonc` apuntando a `http://127.0.0.1:9000/v1`.
+# 📊 2. Estado actual del proyecto
+
+**Estado:** prototipo funcional con validaciones experimentales.
+
+El proyecto ya cuenta con:
+
+- inferencia local mediante `llama.cpp`;
+- aceleración Vulkan en una NVIDIA GT 1030;
+- comunicación entre PC principal y nodo secundario;
+- proxy compatible con API OpenAI;
+- routing entre backend local y nodo remoto;
+- pruebas de carga;
+- pruebas de concurrencia;
+- mediciones de tokens/s;
+- mediciones de VRAM;
+- mediciones de temperatura;
+- prueba experimental de inferencia distribuida mediante RPC;
+- pruebas de routing dinámico.
+
+El proyecto se encuentra ahora en una etapa de **formalización del router**, no simplemente de incorporación de nuevas funciones.
 
 ---
 
-## 📊 4. Pruebas Realizadas y Métricas Empíricas
+# 🔬 3. Estado de evidencia
 
-### A. Rendimiento en el Nodo Secundario (AMD A8 vs. GT 1030 Vulkan)
+Para evitar confundir resultados medidos con funcionalidades todavía experimentales, el proyecto utiliza tres categorías.
 
-| Prueba | CPU AMD A8 (Sin GPU) | GT 1030 2GB (Vulkan) | Impacto / Mejora |
+## DEMOSTRADO
+
+Funcionalidad ejecutada y medida bajo las condiciones experimentales descritas:
+
+- inferencia mediante GT 1030 + Vulkan;
+- comunicación LAN entre equipos;
+- API local compatible con OpenAI;
+- routing entre backend remoto y local;
+- ejecución concurrente de varias peticiones;
+- funcionamiento con prompts de distinto tamaño;
+- utilización de la GT 1030 como nodo auxiliar;
+- prueba de inferencia distribuida mediante RPC.
+
+## EXPERIMENTAL
+
+Funcionalidades o mecanismos que requieren más pruebas antes de considerarse robustos:
+
+- política de routing basada en múltiples recursos;
+- selección automática avanzada de backend;
+- health monitoring;
+- fallback automático;
+- telemetría sistemática;
+- utilización oportunista de recursos de la estación principal;
+- decisiones basadas en carga de GPU/CPU.
+
+## FUTURO
+
+Líneas que no forman parte todavía de la capacidad validada del proyecto:
+
+- detección automática de procesos como `Unity.exe`;
+- KV cache cuantizado;
+- RAG local;
+- migración a Gigabit;
+- nuevas estrategias de routing;
+- ampliación de modelos y backends.
+
+---
+
+# 🏗️ 4. Arquitectura actual
+
+El PC principal ejecuta el router mediante:
+
+```text
+127.0.0.1:9000/v1
+```
+
+Las aplicaciones cliente pueden comunicarse con el router utilizando una interfaz compatible con el estándar OpenAI.
+
+Actualmente, la decisión de routing se basa principalmente en el tamaño/carga estimada de la solicitud.
+
+Conceptualmente:
+
+```text
+Request
+   │
+   ▼
+Router
+   │
+   ├── carga ligera ──► Nodo secundario
+   │
+   └── carga pesada ──► Backend local
+```
+
+Esta lógica funciona como demostración inicial, pero será reemplazada progresivamente por una arquitectura explícita de `Router + Policy`.
+
+---
+
+# 🚀 5. Instalación
+
+## A. Nodo secundario
+
+Hardware de referencia:
+
+- Ubuntu Server 24.04 LTS
+- AMD A8 PRO-7600B
+- 16 GB RAM
+- NVIDIA GT 1030 2 GB
+- almacenamiento `/data`
+
+### Driver NVIDIA
+
+La GT 1030 utilizada corresponde a arquitectura Pascal y no dispone de GSP.
+
+Instalar el driver propietario correspondiente al entorno validado:
+
+```bash
+sudo apt update
+sudo apt install -y nvidia-driver-580
+sudo apt-mark hold nvidia-driver-580 nvidia-dkms-580
+```
+
+### Vulkan y herramientas
+
+```bash
+sudo apt install -y \
+    vulkan-tools \
+    libvulkan-dev \
+    glslc \
+    libshaderc-dev \
+    git \
+    cmake \
+    build-essential
+```
+
+### Compilación de llama.cpp
+
+El AMD A8 utilizado no dispone de AVX2, por lo que la compilación de referencia utiliza:
+
+```bash
+git clone https://github.com/ggerganov/llama.cpp.git /data/repositories/llama.cpp
+
+cd /data/repositories/llama.cpp
+
+cmake -B build \
+    -DGGML_VULKAN=ON \
+    -DGGML_AVX2=OFF \
+    -DGGML_AVX512=OFF \
+    -DGGML_FMA=ON \
+    -DGGML_F16C=ON
+
+cmake --build build --config Release -j3
+```
+
+### Modelos de referencia
+
+Los modelos deben mantenerse dentro del presupuesto de memoria de la GT 1030.
+
+Ejemplos utilizados:
+
+```text
+Llama 3.2 1B Instruct Q4_K_M
+Qwen 2.5 1.5B Instruct Q4_K_M
+BGE-small para embeddings
+```
+
+### Servicio llama-server
+
+El nodo secundario puede ejecutar `llama-server` como servicio persistente mediante `systemd`.
+
+Ejemplo:
+
+```ini
+[Unit]
+Description=Llama.cpp API Server
+After=network.target
+
+[Service]
+Type=simple
+User=code
+Group=code
+WorkingDirectory=/data/repositories/llama.cpp
+ExecStart=/data/repositories/llama.cpp/build/bin/llama-server \
+    -m /data/models/Llama-3.2-1B-Instruct-Q4_K_M.gguf \
+    -ngl 99 \
+    -c 4096 \
+    --host 0.0.0.0 \
+    --port 8080 \
+    --jinja \
+    --skip-chat-parsing
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+---
+
+## B. PC principal
+
+Clonar el repositorio:
+
+```bash
+git clone https://github.com/LARP/barto-router.git
+cd barto-router
+```
+
+Iniciar el router:
+
+```bash
+python router.py
+```
+
+El proxy queda disponible en:
+
+```text
+http://127.0.0.1:9000/v1
+```
+
+Los clientes compatibles con API OpenAI pueden utilizar este endpoint.
+
+---
+
+# 📈 6. Resultados experimentales
+
+## A. AMD A8 vs GT 1030 Vulkan
+
+| Métrica | AMD A8 CPU | GT 1030 Vulkan |
+|---|---|---|
+| **Prompt processing** | 92,76 t/s | 129,56 t/s |
+| **Generación** | 7,57 t/s | 44,63 t/s |
+| **Latencia/token** | 132,1 ms | 22,4 ms |
+| **Temperatura GPU** | — | 38–43 °C |
+| **VRAM** | 0 MB | 966 MiB / 2048 MiB |
+
+En las condiciones de prueba, la GT 1030 alcanzó aproximadamente **5,9× la velocidad de generación** del AMD A8.
+
+---
+
+## B. Experimento RPC distribuido
+
+También se probó una arquitectura donde las capas del modelo se dividían entre la RTX 3050 y la GT 1030 mediante RPC.
+
+Resultado:
+
+```text
+RPC distribuido:      9,6 tokens/s
+CPU local:            62,3 tokens/s
+```
+
+La prueba demostró que la arquitectura distribuida podía funcionar técnicamente, pero presentó un rendimiento significativamente inferior.
+
+La conclusión de ingeniería fue descartar este mecanismo como estrategia principal bajo las condiciones de red y hardware utilizadas.
+
+El enfoque adoptado posteriormente fue mantener modelos independientes en cada nodo y utilizar routing entre backends.
+
+---
+
+## C. Pruebas de carga
+
+Resultados registrados:
+
+- Prompt corto: **3,20 s / 80 tokens**
+- Prompt pesado (>5.400 caracteres): **14,77 s**
+- 3 peticiones concurrentes: **6,23 s**
+- Sin error OOM durante estas pruebas.
+
+Estos resultados corresponden a los escenarios específicos descritos y no constituyen una garantía general de rendimiento para cualquier hardware, modelo o carga.
+
+---
+
+## D. Routing dinámico
+
+Se validó un mecanismo inicial de selección entre nodo secundario y backend local.
+
+| Métrica | Carga ligera | Carga pesada |
+|---|---|---|
+| **Backend seleccionado** | Nodo secundario | Local RTX |
+| **Entrada** | ~25 tokens | ~4.330 tokens |
+| **Tokens generados** | 120 | 200 |
+| **Tiempo total** | 3,38 s | 2,17 s |
+| **Velocidad efectiva** | 35,5 t/s | 92,3 t/s |
+| **Variación de VRAM local** | 0 MB | ~4 MB |
+
+En esta prueba, las solicitudes ligeras fueron enviadas al nodo secundario mientras que una solicitud considerablemente mayor fue procesada localmente.
+
+El resultado demuestra el funcionamiento del mecanismo de selección utilizado en el escenario probado.
+
+No implica que el tamaño del prompt sea por sí solo una política óptima para todos los escenarios.
+
+---
+
+## E. Comparativa de Tiempos de Generación según el Motor de Ejecución
+
+Tomando como referencia la generación completa de un documento técnico extenso (como la redacción de este README, de ~13.500 caracteres / ~3.400 tokens), los tiempos calculados a partir de las tasas empíricas de generación medidas son:
+
+| Motor de Ejecución | Velocidad Típica | Tiempo Estimado (~3.400 tokens) | Rol Adecuado dentro de la Arquitectura |
 |---|---|---|---|
-| **Procesamiento de Prompt** | 92.76 t/s | **129.56 t/s** | **+39.7% más rápido** |
-| **Generación de Tokens** | 7.57 t/s | **44.63 t/s** | **+489.5% (5.9× más rápido)** 🚀 |
-| **Latencia por Token** | 132.1 ms | **22.4 ms** | **6× menos tiempo de espera** |
-| **Temperatura de la GPU** | N/A | **38°C – 43°C** | Muy fría y estable bajo carga |
-| **VRAM Utilizada** | 0 MB | **966 MiB / 2048 MiB** | **> 1 GB libre de margen** |
+| **IA Local Nodo Secundario (GT 1030 2 GB Vulkan)** | ~44,6 tokens/s | **~75 a 85 segundos** | Consultas cotidianas, refactorizaciones cortas (<500 tokens), asistencia sin consumo de VRAM en PC principal. |
+| **IA Local Nodo Principal (RTX 3050 6 GB CUDA)** | ~92 a 136 tokens/s | **~25 a 30 segundos** | Cargas pesadas por ráfagas, código extenso, simulación (>3.000 chars) cuando la estación está libre. |
+| **Model Cloud / Frontier (ej. Model Antigravity)** | Cómputo distribuido en datacenter | **~2 a 3 segundos** | Redacción masiva de documentación, razonamiento arquitectónico global y tareas de desarrollo agéntico. |
 
-### B. Experimento RPC Distribuido (Dividir capas entre RTX 3050 y GT 1030 por LAN)
-
-Se ejecutó una prueba dividiendo capas por TCP (`ggml-rpc-server`):
-- **Resultado Técnico:** PASS. Ambas GPUs colaboraron y generaron texto coherente.
-- **Resultado Práctico:** **9.6 tokens/s** (RPC LAN) frente a **62.3 tokens/s** (CPU Local).
-- **Conclusión de Ingeniería:** La latencia de la red FastEthernet (95 Mbps) y la diferencia de velocidad entre ambas tarjetas genera cuello de botella. **El modo desacoplado por API independiente (barto-router) es 4.5× superior al modo distribuido por capas.**
-
-### C. Prueba de Carga y Concurrencia con barto-router
-
-- **Prompt Corto:** 3.20 segundos (80 tokens).
-- **Prompt Pesado (>5.400 caracteres de código):** 14.77 segundos sin error OOM ni degradación.
-- **Concurrencia (3 peticiones en paralelo):** Atendidas limpiamente en 6.23 segundos en total.
-- **Impacto en PC Principal (Unity3D):** **0.0% de uso de VRAM y CPU.**
-
-### D. Enrutamiento Dinámico Adaptativo: Carga Ligera (Nodo Secundario) vs. Carga Pesada (PC Principal)
-
-Se validó el mecanismo de conmutación oportunista en tiempo real a través de `barto-router` (`127.0.0.1:9000`), evaluando la respuesta del sistema ante una consulta técnica cotidiana frente a un prompt masivo de código técnico:
-
-| Métrica Evaluada | Carga Ligera (Consulta Cotidiana) | Carga Pesada (Simulación >13 KB Código) | Impacto / Diferencia |
-|---|---|---|---|
-| **Destino Asignado por Router** | **`NODO_SECUNDARIO` (GT 1030 Remota)** | **`LOCAL_RTX` (RTX 3050 Local)** | Conmutación 100% autónoma |
-| **Tamaño del Prompt** | 81 caracteres (~25 tokens) | **13.856 caracteres (~4.330 tokens)** | **171× más volumen de entrada** |
-| **Tokens Generados** | 120 tokens | **200 tokens** | Respuesta técnica extensa |
-| **Tiempo de Respuesta Total** | 3.38 segundos | **2.17 segundos** | **1.56× más rápido a pesar de la carga** ⚡ |
-| **Velocidad Efectiva** | 35.5 tokens/s | **92.3 tokens/s** | **2.6× mayor tasa de generación** |
-| **Pico Carga GPU Local (RTX 3050)** | 17% (ruido de escritorio Windows) | **100% (ráfaga de cómputo)** | Activación total de Tensor Cores |
-| **Consumo Eléctrico GPU Local** | 4.2 W (modo reposo) | **74.8 W (TGP pico)** | Retorno inmediato a 4.2 W al terminar |
-| **Variación de VRAM Local** | **0 MB** | **4 MB** (KV cache) | Huella de memoria prácticamente nula |
-
-**Conclusiones Empíricas:**
-1. **Protección Total en Uso Habitual:** Para consultas diarias, el PC principal no consume un solo megabyte de VRAM ni eleva la temperatura, manteniendo Unity3D y los editores al 100% de fluidez.
-2. **Aceleración Masiva Oportunista:** Si entra un prompt pesado (ej. análisis de arquitectura de código > 13 KB) y la RTX 3050 está desocupada, el router conmuta al backend CUDA local. El prompt de 4.330 tokens se procesa en ~0.3 segundos y genera a más de 92 tok/s, respondiendo en apenas 2.17 segundos.
-3. **Eficiencia Energética en Ráfagas (Burst Mode):** La GPU principal solo eleva consumo durante los 2 segundos exactos del cálculo, regresando instantáneamente a 4.2 W de reposo sin acumular calor sostenido en la estación de trabajo.
+Esta comparativa fundamenta la visión de `barto-router`: el nodo secundario y el nodo principal resuelven la privacidad y la asistencia de código habitual a coste cero y con aislamiento de recursos de la estación de trabajo, mientras que tareas de escala masiva pueden reservarse para ráfagas locales o servicios de mayor envergadura.
 
 ---
 
-## ⚖️ 5. Análisis de Viabilidad: ¿Es Beneficioso?
+# ⚙️ 7. Principios de diseño
 
-### ✅ Ventajas Confirmadas:
-1. **Aislamiento Total de Recursos:** Unity3D y los proyectos gráficos en el PC principal disponen del 100% de la RTX 3050 en todo momento.
-2. **Cero Costo en Tokens Cloud:** Respuestas ilimitadas para tareas repetitivas de desarrollo (refactorizaciones, consultas de sintaxis C#, explicaciones de errores).
-3. **Reutilización de Hardware:** Una GPU de entrada de 2017 (GT 1030) entrega una velocidad de lectura de IA superior a la velocidad de lectura humana (45 t/s).
-4. **Privacidad Absoluta:** Ningún fragmento de código ni consulta sale a internet; todo el tráfico se restringe a la subred local (`192.168.100.0/24`).
+El proyecto sigue actualmente estos principios:
 
-### ⚠️ Limitaciones Identificadas:
-1. **Límite de Parámetros del Modelo:** El nodo está restringido a modelos de 1B a 3B parámetros con cuantizaciones Q4 para no exceder los 2 GB de VRAM.
-2. **Capacidad de Razonamiento:** Para arquitecturas de software complejas o refactorizaciones masivas de múltiples archivos, se requiere recurrir al PC principal o a modelos de mayor escala.
+### 1. No competir innecesariamente por recursos
 
----
+Cuando una solicitud puede ejecutarse en el nodo secundario, el router puede evitar utilizar la GPU principal.
 
-## 🔮 6. Próximas Mejoras y Próximos Pasos
+### 2. Utilizar el hardware disponible
 
-### 🎯 Próximo Paso Estratégico: Uso Oportunista de Recursos en el PC Principal (Estación Activa)
+Una GPU antigua puede seguir siendo útil para modelos pequeños y tareas de inferencia de baja demanda.
 
-Manteniendo la misma configuración de hardware en ambos equipos:
-- **PC Principal:** Intel Core i7-13650HX · 16 GB RAM · NVIDIA GeForce RTX 3050 6GB Laptop GPU.
-- **PC Secundario:** AMD A8 PRO-7600B · 16 GB RAM · NVIDIA GeForce GT 1030 2GB (Ubuntu Server).
+### 3. Medir antes de optimizar
 
-Se estudiará la forma de **aprovechar dinámicamente una mayor cantidad de recursos del PC principal (GPU y/o CPU)** cuando se encuentren disponibles, preservando estrictamente la premisa original del proyecto: el PC principal es una **estación de trabajo activa e interactiva** (Unity3D, compilación, edición, diseño).
+Las decisiones arquitectónicas deben apoyarse en mediciones reproducibles.
 
-#### Líneas de Investigación y Diseño:
-1. **Monitoreo y Detección de Disponibilidad en Tiempo Real:**
-   - Evaluar en tiempo real la telemetría del PC principal (VRAM libre, uso de GPU, carga de núcleos de CPU).
-   - Detectar procesos prioritarios de usuario (ej. `Unity.exe`, simulaciones, editores) para discernir si el equipo está en uso intensivo o en estado ocioso/intermitente.
-2. **Inferencia Acelerada Oportunista (Burst Computing):**
-   - Si la GPU RTX 3050 o la CPU principal disponen de margen suficiente sin comprometer el entorno de trabajo, despachar peticiones localmente para aprovechar su mayor potencia (12.19 TFLOPS FP16 y 6 GB VRAM) y reducir drásticamente los tiempos de respuesta.
-3. **Política de Desalojo y Prioridad Cero-Interferencia (Zero-Interference Policy):**
-   - En el instante en que el usuario inicie tareas intensivas en la estación de trabajo (ej. Play Mode en Unity, renderizado, compilación de código), el sistema debe degradar o desviar automáticamente el 100% de la carga de inferencia al nodo secundario (GT 1030), garantizando que el desarrollador nunca sufra caídas de FPS, latencia ni riesgo de OOM en su estación.
-4. **Enrutamiento Híbrido Inteligente en `barto-router`:**
-   - Evolucionar `barto-router` hacia un orquestador que decida el destino de cada petición (local GPU, local CPU, o nodo remoto GT 1030) según la complejidad del prompt, los recursos libres en ese microsegundo y el estado de la estación de trabajo.
+### 4. Separar decisión y ejecución
+
+El router debe encargarse de coordinar solicitudes, mientras que la política determina qué backend resulta apropiado.
+
+### 5. Degradación segura
+
+La pérdida de un nodo remoto no debería impedir que el sistema continúe funcionando cuando exista otro backend disponible.
 
 ---
 
-### 📋 Hoja de Ruta de Mejoras Técnicas:
+# 🧩 8. Próxima arquitectura: Router + Policy
 
-- [ ] **Aprovechamiento Dinámico y Seguro de la GPU/CPU Local:** Evaluar heurísticas de uso de VRAM/CPU en tiempo real para activar inferencia en el PC principal solo cuando no interfiera con el trabajo activo.
-- [ ] **Detección Automática de Procesos Críticos (Unity Play Mode):** Integrar hooks/sensores de telemetría de procesos (`Unity.exe`, etc.) para forzar la delegación completa al nodo secundario ante actividad interactiva.
-- [ ] **KV Cache Cuantizado a `q8_0` en el Nodo:** Activar `--cache-type-k q8_0 --cache-type-v q8_0` para duplicar la ventana de contexto a 8.192 tokens en la GT 1030 sin exceder los 2 GB de VRAM.
-- [ ] **Canal RAG Local en el Nodo:** Indexar documentación local de Unity API con `bge-small-en-v1.5` en `/data/models`.
-- [ ] **Migración a Enlace Gigabit (1000 Mbps):** Sustituir el enlace FastEthernet actual por Gigabit para maximizar throughput LAN y reducir latencia.
+La lógica actual de routing será separada progresivamente en dos componentes.
+
+```text
+                Request
+                   │
+                   ▼
+              ┌─────────┐
+              │ Router  │
+              └────┬────┘
+                   │
+                   ▼
+           ┌──────────────┐
+           │ PolicyEngine │
+           └──────┬───────┘
+                  │
+                  ▼
+               Backend
+```
+
+La interfaz prevista será conceptualmente:
+
+```python
+decision = policy.decide(request, node_states)
+```
+
+El router no deberá depender de reglas específicas como:
+
+```text
+prompt corto → remoto
+prompt largo → local
+```
+
+Esas reglas pertenecerán a la política.
+
+Esto permitirá experimentar con diferentes políticas sin modificar el núcleo de comunicación y ejecución.
+
+---
+
+# 📡 9. Telemetría
+
+Una prioridad de la siguiente versión será registrar información suficiente para reconstruir cada decisión.
+
+El esquema mínimo previsto incluye:
+
+```text
+request_id
+timestamp
+
+model
+input_tokens
+output_tokens
+
+decision_backend
+execution_backend
+
+TTFT
+generation_time
+tokens_per_second
+
+node_state_at_request
+
+VRAM_before
+VRAM_peak
+
+RAM_before
+RAM_peak
+
+fallback
+success
+error
+```
+
+El campo:
+
+```text
+node_state_at_request
+```
+
+permitirá distinguir entre problemas de política y cambios de infraestructura ocurridos después de la decisión.
+
+También se distinguirá entre:
+
+```text
+decision_backend
+```
+
+y:
+
+```text
+execution_backend
+```
+
+para registrar correctamente los casos donde una decisión inicial termina en fallback.
+
+---
+
+# ❤️ 10. Health monitoring y fallback
+
+La siguiente etapa incorporará estados explícitos de los nodos:
+
+```text
+ONLINE
+BUSY
+DEGRADED
+OFFLINE
+```
+
+La lógica esperada será:
+
+```text
+Nodo secundario disponible
+        │
+        ▼
+   ejecutar allí
+```
+
+```text
+Nodo secundario ocupado
+        │
+        ▼
+     fallback
+```
+
+```text
+Nodo secundario desconectado
+        │
+        ▼
+     fallback
+```
+
+```text
+Timeout
+   │
+   ▼
+fallback
+```
+
+El objetivo es evitar que el nodo secundario se convierta en un punto único de fallo.
+
+---
+
+# 🧪 11. Benchmark reproducible
+
+Antes de introducir políticas más complejas, se establecerá un benchmark reproducible.
+
+El benchmark deberá evaluar como mínimo:
+
+- prompts pequeños;
+- prompts medianos;
+- prompts grandes;
+- ejecución local;
+- ejecución remota;
+- routing automático;
+- concurrencia;
+- fallback;
+- nodo desconectado.
+
+Las métricas principales serán:
+
+```text
+TTFT
+latencia total
+tokens/s
+VRAM
+RAM
+tasa de éxito
+fallbacks
+```
+
+La finalidad no es solamente medir velocidad, sino poder comparar objetivamente diferentes políticas de routing.
+
+---
+
+# 🗺️ 12. Plan de desarrollo v0.2
+
+La siguiente versión prioriza formalización sobre nuevas funcionalidades.
+
+## P0 — Documentación
+
+- Separar resultados demostrados de funcionalidades futuras.
+- Eliminar afirmaciones absolutas no justificadas por las pruebas.
+- Documentar limitaciones experimentales.
+- Mantener resultados reproducibles claramente identificados.
+
+## P1 — PolicyEngine
+
+- Extraer la lógica de decisión de `router.py`.
+- Definir interfaz estable `decide(request, node_states)`.
+- Implementar política inicial equivalente al comportamiento actual.
+- Permitir sustituir la política sin modificar el router.
+
+## P2 — Telemetría
+
+- `request_id`.
+- Backend decidido.
+- Backend ejecutado.
+- Estado del nodo en el momento de decisión.
+- TTFT.
+- Tiempo total.
+- Tokens/s.
+- VRAM/RAM.
+- Fallback.
+- Resultado/error.
+
+## P3 — Health y recuperación
+
+- Estados de nodo.
+- Health checks.
+- Timeout.
+- Fallback.
+- Recuperación automática.
+
+## P4 — Benchmark
+
+- Suite reproducible.
+- Escenarios de carga.
+- Concurrencia.
+- Fallos de nodo.
+- Comparación de políticas.
+
+---
+
+# 🔮 13. Mejoras futuras
+
+Estas mejoras quedan deliberadamente fuera del núcleo de v0.2.
+
+### Aprovechamiento oportunista de la estación principal
+
+Evaluar el uso de recursos locales cuando exista margen suficiente.
+
+### Detección de procesos críticos
+
+Investigar mecanismos para detectar actividad de aplicaciones como:
+
+```text
+Unity.exe
+renderizadores
+compiladores
+simulaciones
+```
+
+y utilizar esa información como señal para la política.
+
+### KV cache cuantizado
+
+Evaluar configuraciones como:
+
+```text
+--cache-type-k q8_0
+--cache-type-v q8_0
+```
+
+para aumentar la capacidad de contexto dentro del presupuesto de memoria disponible.
+
+### RAG local
+
+Evaluar un sistema de recuperación local utilizando modelos de embeddings pequeños.
+
+### Red Gigabit
+
+Evaluar la migración del enlace de red actual a Gigabit y medir su impacto real sobre latencia y throughput.
+
+---
+
+# ⚠️ 14. Limitaciones conocidas
+
+### Hardware del nodo
+
+La GT 1030 de 2 GB limita significativamente el tamaño de los modelos que pueden ejecutarse de forma práctica.
+
+La configuración validada está orientada principalmente a modelos pequeños y cuantizados.
+
+### Capacidad de razonamiento
+
+Los modelos pequeños pueden ser adecuados para consultas, transformaciones y tareas sencillas, pero no sustituyen modelos de mayor capacidad para tareas complejas.
+
+### Red
+
+El rendimiento de estrategias de inferencia distribuida por capas depende fuertemente de la latencia y ancho de banda de la red.
+
+El experimento RPC realizado mostró que distribuir capas entre GPUs no resulta competitivo bajo las condiciones evaluadas.
+
+### Routing
+
+La política actual basada principalmente en características del prompt es una primera aproximación.
+
+No debe considerarse una política óptima general.
+
+---
+
+# 🔐 15. Privacidad y red
+
+En la configuración local validada, las solicitudes entre el PC principal y el nodo secundario se mantienen dentro de la red local.
+
+Esto permite ejecutar inferencia sin enviar las solicitudes a servicios externos cuando se utilizan únicamente los backends locales.
+
+La propiedad de privacidad depende de la configuración de red, los backends utilizados y las aplicaciones conectadas al router.
+
+Por ello, el proyecto no considera apropiado describir esta característica como una garantía universal de privacidad.
+
+---
+
+# 📌 16. Conclusión
+
+`barto-router` ha demostrado que un PC secundario equipado con una GPU antigua puede utilizarse como nodo de inferencia local y que un router ejecutándose en la estación principal puede seleccionar entre distintos backends.
+
+Las pruebas realizadas también permitieron descartar una estrategia de inferencia distribuida por capas que, aunque técnicamente funcional, presentó un rendimiento insuficiente bajo las condiciones evaluadas.
+
+La siguiente etapa no consiste en añadir inmediatamente más funcionalidades.
+
+El objetivo de **v0.2** es convertir el prototipo actual en un sistema más observable, modular y reproducible mediante:
+
+1. separación entre Router y Policy;
+2. telemetría por petición;
+3. health monitoring;
+4. fallback;
+5. benchmark reproducible.
+
+Una vez establecida esa base, será posible evaluar de forma objetiva políticas de routing más sofisticadas.
+
+**Estado actual: prototipo funcional con evidencia experimental.**
+
+**Próximo objetivo: router instrumentado, modular y basado en políticas.**
+
+---
+
+# Licencia
+
+Consultar los archivos de licencia del repositorio para conocer las condiciones actuales de uso y distribución.
