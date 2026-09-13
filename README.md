@@ -157,9 +157,33 @@ Se ejecutó una prueba dividiendo capas por TCP (`ggml-rpc-server`):
 
 ---
 
-## 🔮 6. Próximas Mejoras Propuestas
+## 🔮 6. Próximas Mejoras y Próximos Pasos
 
-- [ ] **Detección Automática de Proceso Unity (Play Mode):** Integrar hook que sondee `Unity.exe` y fuerce desvío al nodo si el editor está en ejecución activa.
-- [ ] **KV Cache Cuantizado a `q8_0`:** Activar `--cache-type-k q8_0 --cache-type-v q8_0` para duplicar la ventana de contexto a 8.192 tokens con el mismo consumo de VRAM.
-- [ ] **Canal RAG Local en el Nodo:** Aprovechar el modelo `bge-small-en-v1.5` descargado en `/data/models` para indexar la documentación de la API de Unity localmente en SQLite/ChromaDB.
-- [ ] **Red Gigabit (1000 Mbps):** Migrar el enlace LAN a switch Gigabit para habilitar transferencias masivas de contexto en microsegundos.
+### 🎯 Próximo Paso Estratégico: Uso Oportunista de Recursos en el PC Principal (Estación Activa)
+
+Manteniendo la misma configuración de hardware en ambos equipos:
+- **PC Principal:** Intel Core i7-13650HX · 16 GB RAM · NVIDIA GeForce RTX 3050 6GB Laptop GPU.
+- **PC Secundario:** AMD A8 PRO-7600B · 16 GB RAM · NVIDIA GeForce GT 1030 2GB (Ubuntu Server).
+
+Se estudiará la forma de **aprovechar dinámicamente una mayor cantidad de recursos del PC principal (GPU y/o CPU)** cuando se encuentren disponibles, preservando estrictamente la premisa original del proyecto: el PC principal es una **estación de trabajo activa e interactiva** (Unity3D, compilación, edición, diseño).
+
+#### Líneas de Investigación y Diseño:
+1. **Monitoreo y Detección de Disponibilidad en Tiempo Real:**
+   - Evaluar en tiempo real la telemetría del PC principal (VRAM libre, uso de GPU, carga de núcleos de CPU).
+   - Detectar procesos prioritarios de usuario (ej. `Unity.exe`, simulaciones, editores) para discernir si el equipo está en uso intensivo o en estado ocioso/intermitente.
+2. **Inferencia Acelerada Oportunista (Burst Computing):**
+   - Si la GPU RTX 3050 o la CPU principal disponen de margen suficiente sin comprometer el entorno de trabajo, despachar peticiones localmente para aprovechar su mayor potencia (12.19 TFLOPS FP16 y 6 GB VRAM) y reducir drásticamente los tiempos de respuesta.
+3. **Política de Desalojo y Prioridad Cero-Interferencia (Zero-Interference Policy):**
+   - En el instante en que el usuario inicie tareas intensivas en la estación de trabajo (ej. Play Mode en Unity, renderizado, compilación de código), el sistema debe degradar o desviar automáticamente el 100% de la carga de inferencia al nodo secundario (GT 1030), garantizando que el desarrollador nunca sufra caídas de FPS, latencia ni riesgo de OOM en su estación.
+4. **Enrutamiento Híbrido Inteligente en `barto-router`:**
+   - Evolucionar `barto-router` hacia un orquestador que decida el destino de cada petición (local GPU, local CPU, o nodo remoto GT 1030) según la complejidad del prompt, los recursos libres en ese microsegundo y el estado de la estación de trabajo.
+
+---
+
+### 📋 Hoja de Ruta de Mejoras Técnicas:
+
+- [ ] **Aprovechamiento Dinámico y Seguro de la GPU/CPU Local:** Evaluar heurísticas de uso de VRAM/CPU en tiempo real para activar inferencia en el PC principal solo cuando no interfiera con el trabajo activo.
+- [ ] **Detección Automática de Procesos Críticos (Unity Play Mode):** Integrar hooks/sensores de telemetría de procesos (`Unity.exe`, etc.) para forzar la delegación completa al nodo secundario ante actividad interactiva.
+- [ ] **KV Cache Cuantizado a `q8_0` en el Nodo:** Activar `--cache-type-k q8_0 --cache-type-v q8_0` para duplicar la ventana de contexto a 8.192 tokens en la GT 1030 sin exceder los 2 GB de VRAM.
+- [ ] **Canal RAG Local en el Nodo:** Indexar documentación local de Unity API con `bge-small-en-v1.5` en `/data/models`.
+- [ ] **Migración a Enlace Gigabit (1000 Mbps):** Sustituir el enlace FastEthernet actual por Gigabit para maximizar throughput LAN y reducir latencia.
