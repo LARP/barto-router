@@ -42,21 +42,20 @@ La arquitectura permite desplazar determinadas tareas de inferencia hacia el nod
 
 # 📊 2. Estado actual del proyecto
 
-**Estado:** v0.2 Consolidado — Router instrumentado, modular y basado en políticas.
+**Estado:** v0.4 Consolidado — True Streaming, Benchmark Regularizado ($N=5$), CostEstimationPolicy y Enrutamiento VRAM-Aware.
 
 El proyecto cuenta con:
 
-- inferencia local mediante `llama.cpp`;
-- aceleración Vulkan en una NVIDIA GT 1030;
-- aceleración CUDA en una NVIDIA RTX 3050 Laptop;
-- comunicación LAN transparente entre PC principal y nodo secundario;
-- proxy compatible con API OpenAI (`127.0.0.1:9000/v1`);
+- inferencia local mediante `llama.cpp` acelerada por Vulkan (GT 1030 2 GB) y CUDA (RTX 3050 6 GB);
+- comunicación LAN de ultra-baja latencia (<2 ms en reposo);
+- proxy compatible con API OpenAI (`127.0.0.1:9000/v1`) con **true streaming chunk-by-chunk**;
 - arquitectura desacoplada: `Router` + `PolicyEngine` (`policy.py`);
+- política activa: **`CostEstimationPolicy_v0.4`** calibrada con $PROTECTION\_FACTOR = 4,182$ y filtro duro de VRAM segura;
 - telemetría estructurada persistente por petición (`telemetry.py` / `telemetry.jsonl`);
 - monitor proactivo de salud y latencia en segundo plano (`health.py`);
-- suite de benchmark reproducible (`benchmark.py`);
-- routing oportunista (protección de la estación de trabajo y ráfagas en GPU local);
-- pruebas de carga, concurrencia y tolerancia a fallos.
+- suite de benchmark estadístico regularizado ($N=5$ + warmup descartado) con $CV < 5\%$;
+- resiliencia y fallback transparente con tiempo de recuperación menor a 1 segundo (<10s SLA);
+- pruebas de concurrencia masiva (1x, 3x, 5x) al 100% de éxito.
 
 ---
 
@@ -665,19 +664,17 @@ Las pruebas realizadas también permitieron descartar una estrategia de inferenc
 
 La siguiente etapa no consiste en añadir inmediatamente más funcionalidades.
 
-El objetivo de **v0.2** es convertir el prototipo actual en un sistema más observable, modular y reproducible mediante:
-
-1. separación entre Router y Policy;
-2. telemetría por petición;
-3. health monitoring;
-4. fallback;
-5. benchmark reproducible.
-
-Una vez establecida esa base, será posible evaluar de forma objetiva políticas de routing más sofisticadas.
-
-**Estado actual: prototipo funcional con evidencia experimental.**
-
-**Próximo objetivo: router instrumentado, modular y basado en políticas.**
+El objetivo de **v0.4** ha sido completado exitosamente mediante:
+ 
+ 1. soporte de **true streaming** en el router (TTFT reducido de ~1,9s/280ms a 38–54 ms);
+ 2. regularización estadística de benchmark ($N=5$ + warmup) superando el criterio 7.3-B ($CV < 5\%$);
+ 3. calibración empírica offline de throughput, latencia y factor de protección ($PROTECTION\_FACTOR = 4,182$ derivado de P90);
+ 4. política de decisión matemática `CostEstimationPolicy` con filtro duro de VRAM segura;
+ 5. validación de recuperación de recursos (0 MB fuga), tolerancia a fallos (<1s) y concurrencia hasta 5x.
+ 
+ **Estado actual: sistema de inferencia adaptativa distribuida formalmente calibrado y validado.**
+ 
+ **Próximo objetivo: despliegue de KV Cache Q8 en el nodo secundario y evaluación interactiva con Unity.**
 
 ---
 
