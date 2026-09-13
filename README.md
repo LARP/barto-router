@@ -42,24 +42,21 @@ La arquitectura permite desplazar determinadas tareas de inferencia hacia el nod
 
 # 📊 2. Estado actual del proyecto
 
-**Estado:** prototipo funcional con validaciones experimentales.
+**Estado:** v0.2 Consolidado — Router instrumentado, modular y basado en políticas.
 
-El proyecto ya cuenta con:
+El proyecto cuenta con:
 
 - inferencia local mediante `llama.cpp`;
 - aceleración Vulkan en una NVIDIA GT 1030;
-- comunicación entre PC principal y nodo secundario;
-- proxy compatible con API OpenAI;
-- routing entre backend local y nodo remoto;
-- pruebas de carga;
-- pruebas de concurrencia;
-- mediciones de tokens/s;
-- mediciones de VRAM;
-- mediciones de temperatura;
-- prueba experimental de inferencia distribuida mediante RPC;
-- pruebas de routing dinámico.
-
-El proyecto se encuentra ahora en una etapa de **formalización del router**, no simplemente de incorporación de nuevas funciones.
+- aceleración CUDA en una NVIDIA RTX 3050 Laptop;
+- comunicación LAN transparente entre PC principal y nodo secundario;
+- proxy compatible con API OpenAI (`127.0.0.1:9000/v1`);
+- arquitectura desacoplada: `Router` + `PolicyEngine` (`policy.py`);
+- telemetría estructurada persistente por petición (`telemetry.py` / `telemetry.jsonl`);
+- monitor proactivo de salud y latencia en segundo plano (`health.py`);
+- suite de benchmark reproducible (`benchmark.py`);
+- routing oportunista (protección de la estación de trabajo y ráfagas en GPU local);
+- pruebas de carga, concurrencia y tolerancia a fallos.
 
 ---
 
@@ -71,26 +68,26 @@ Para evitar confundir resultados medidos con funcionalidades todavía experiment
 
 Funcionalidad ejecutada y medida bajo las condiciones experimentales descritas:
 
-- inferencia mediante GT 1030 + Vulkan;
-- comunicación LAN entre equipos;
+- inferencia mediante GT 1030 + Vulkan (Ubuntu Server);
+- inferencia acelerada mediante RTX 3050 + CUDA (Windows 11);
+- comunicación LAN entre equipos (<3 ms de latencia en reposo);
 - API local compatible con OpenAI;
-- routing entre backend remoto y local;
-- ejecución concurrente de varias peticiones;
-- funcionamiento con prompts de distinto tamaño;
-- utilización de la GT 1030 como nodo auxiliar;
-- prueba de inferencia distribuida mediante RPC.
+- arquitectura desacoplada `Router` $\rightarrow$ `PolicyEngine` $\rightarrow$ `Backends`;
+- telemetría estructurada por petición (`request_id`, tiempos, tokens, razones);
+- monitor proactivo con estados formales (`ONLINE`, `BUSY`, `OFFLINE`);
+- routing oportunista validado (protege la estación en uso interactivo);
+- suite de benchmark reproducible con registro de TTFT y throughput;
+- ejecución concurrente de solicitudes paralelas;
+- prueba de inferencia distribuida mediante RPC (descartada por cuello de botella de red).
 
 ## EXPERIMENTAL
 
-Funcionalidades o mecanismos que requieren más pruebas antes de considerarse robustos:
+Funcionalidades o mecanismos en fase de prueba y optimización:
 
-- política de routing basada en múltiples recursos;
-- selección automática avanzada de backend;
-- health monitoring;
-- fallback automático;
-- telemetría sistemática;
-- utilización oportunista de recursos de la estación principal;
-- decisiones basadas en carga de GPU/CPU.
+- políticas avanzadas basadas en umbrales de coste y latencia estimada;
+- conmutación dinámica multi-modelo (Llama 3.2 1B vs. Qwen 2.5 1.5B);
+- integración de hooks con el ciclo de vida del editor Unity;
+- persistencia de métricas de telemetría a largo plazo.
 
 ## FUTURO
 
@@ -512,84 +509,54 @@ El objetivo es evitar que el nodo secundario se convierta en un punto único de 
 
 ---
 
-# 🧪 11. Benchmark reproducible
+# 🧪 11. Benchmark reproducible v0.2
 
-Antes de introducir políticas más complejas, se establecerá un benchmark reproducible.
+Se ha establecido y ejecutado la suite de benchmark reproducible ([benchmark.py](benchmark.py)), exportando las métricas obtenidas a [benchmark_v02_results.json](benchmark_v02_results.json).
 
-El benchmark deberá evaluar como mínimo:
+### Resultados de la Suite Automatizada v0.2:
 
-- prompts pequeños;
-- prompts medianos;
-- prompts grandes;
-- ejecución local;
-- ejecución remota;
-- routing automático;
-- concurrencia;
-- fallback;
-- nodo desconectado.
-
-Las métricas principales serán:
-
-```text
-TTFT
-latencia total
-tokens/s
-VRAM
-RAM
-tasa de éxito
-fallbacks
-```
-
-La finalidad no es solamente medir velocidad, sino poder comparar objetivamente diferentes políticas de routing.
+| Escenario Evaluado | Tamaño del Prompt | Backend Seleccionado | TTFT (Latencia) | Tiempo Total | Rendimiento | Decisión del PolicyEngine |
+|---|---|---|---|---|---|---|
+| **1. Small Prompt (Corta)** | 51 caracteres | `NODO_SECUNDARIO` | **1.896 ms** | **1,90 s** | 31,6 tok/s | Carga ligera $\rightarrow$ Protección GPU Principal |
+| **2. Medium Prompt (Media)** | 240 caracteres | `NODO_SECUNDARIO` | **3.049 ms** | **3,05 s** | 39,3 tok/s | Carga ligera $\rightarrow$ Protección GPU Principal |
+| **3. Large Prompt (>13 KB)** | 13.786 caracteres | `NODO_SECUNDARIO` *(Protegido)* | **31.965 ms** | **31,97 s** | 4,7 tok/s | Prompt extenso, pero **estación ocupada (GPU 18% $\ge$ 15%)** |
+| **4. Concurrente (3 hilos)** | 3 hilos simultáneos | `NODO_SECUNDARIO` | 1,25 s a 3,46 s | **3,46 s total** | 100% éxito | Atendidas limpiamente en cola sin errores |
 
 ---
 
 # 🗺️ 12. Plan de desarrollo v0.2
 
-La siguiente versión prioriza formalización sobre nuevas funcionalidades.
+La versión **v0.2** ha completado exitosamente su fase de consolidación, modularidad e instrumentación.
 
-## P0 — Documentación
+## P0 — Documentación ✅
+- [x] Separar resultados demostrados de funcionalidades futuras.
+- [x] Eliminar afirmaciones absolutas no justificadas por las pruebas.
+- [x] Documentar limitaciones experimentales.
+- [x] Mantener resultados reproducibles claramente identificados.
 
-- Separar resultados demostrados de funcionalidades futuras.
-- Eliminar afirmaciones absolutas no justificadas por las pruebas.
-- Documentar limitaciones experimentales.
-- Mantener resultados reproducibles claramente identificados.
+## P1 — PolicyEngine ✅
+- [x] Extraer la lógica de decisión de `router.py` hacia `policy.py`.
+- [x] Definir interfaz estable `BasePolicy.decide(request, backends)`.
+- [x] Implementar política inicial `ThresholdPolicy_v0.2` health-aware.
+- [x] Permitir sustituir la política sin modificar el router.
 
-## P1 — PolicyEngine
+## P2 — Telemetría ✅
+- [x] Generación de `request_id` único por petición.
+- [x] Registro estructurado en `telemetry.jsonl` y cabeceras HTTP (`X-Request-ID`, `X-Decision-Backend`, `X-Execution-Backend`, `X-Total-Time-Ms`, `X-Fallback`).
+- [x] Endpoint `GET /telemetry` para consultar el historial en vivo.
+- [x] Métricas de TTFT, tiempo total, tokens generados y tokens/segundo.
 
-- Extraer la lógica de decisión de `router.py`.
-- Definir interfaz estable `decide(request, node_states)`.
-- Implementar política inicial equivalente al comportamiento actual.
-- Permitir sustituir la política sin modificar el router.
+## P3 — Health y recuperación ✅
+- [x] Estados explícitos de nodo (`ONLINE`, `BUSY`, `DEGRADED`, `OFFLINE`).
+- [x] Health checks proactivos en segundo plano (Heartbeat cada 5s en `health.py`).
+- [x] Medición continua de latencia LAN en milisegundos.
+- [x] Endpoint `GET /health` enriquecido con latencias vivas de cada backend.
+- [x] Fallback automático y preventivo ante desconexión o saturación.
 
-## P2 — Telemetría
-
-- `request_id`.
-- Backend decidido.
-- Backend ejecutado.
-- Estado del nodo en el momento de decisión.
-- TTFT.
-- Tiempo total.
-- Tokens/s.
-- VRAM/RAM.
-- Fallback.
-- Resultado/error.
-
-## P3 — Health y recuperación
-
-- Estados de nodo.
-- Health checks.
-- Timeout.
-- Fallback.
-- Recuperación automática.
-
-## P4 — Benchmark
-
-- Suite reproducible.
-- Escenarios de carga.
-- Concurrencia.
-- Fallos de nodo.
-- Comparación de políticas.
+## P4 — Benchmark ✅
+- [x] Suite reproducible implementada en `benchmark.py`.
+- [x] Escenarios automatizados: Small, Medium, Large (>13 KB) y Concurrencia (3 hilos).
+- [x] Exportación formal de evidencia a `benchmark_v02_results.json`.
 
 ---
 
