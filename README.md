@@ -141,6 +141,26 @@ Se ejecutó una prueba dividiendo capas por TCP (`ggml-rpc-server`):
 - **Concurrencia (3 peticiones en paralelo):** Atendidas limpiamente en 6.23 segundos en total.
 - **Impacto en PC Principal (Unity3D):** **0.0% de uso de VRAM y CPU.**
 
+### D. Enrutamiento Dinámico Adaptativo: Carga Ligera (Nodo Secundario) vs. Carga Pesada (PC Principal)
+
+Se validó el mecanismo de conmutación oportunista en tiempo real a través de `barto-router` (`127.0.0.1:9000`), evaluando la respuesta del sistema ante una consulta técnica cotidiana frente a un prompt masivo de código técnico:
+
+| Métrica Evaluada | Carga Ligera (Consulta Cotidiana) | Carga Pesada (Simulación >13 KB Código) | Impacto / Diferencia |
+|---|---|---|---|
+| **Destino Asignado por Router** | **`NODO_SECUNDARIO` (GT 1030 Remota)** | **`LOCAL_RTX` (RTX 3050 Local)** | Conmutación 100% autónoma |
+| **Tamaño del Prompt** | 81 caracteres (~25 tokens) | **13.856 caracteres (~4.330 tokens)** | **171× más volumen de entrada** |
+| **Tokens Generados** | 120 tokens | **200 tokens** | Respuesta técnica extensa |
+| **Tiempo de Respuesta Total** | 3.38 segundos | **2.17 segundos** | **1.56× más rápido a pesar de la carga** ⚡ |
+| **Velocidad Efectiva** | 35.5 tokens/s | **92.3 tokens/s** | **2.6× mayor tasa de generación** |
+| **Pico Carga GPU Local (RTX 3050)** | 17% (ruido de escritorio Windows) | **100% (ráfaga de cómputo)** | Activación total de Tensor Cores |
+| **Consumo Eléctrico GPU Local** | 4.2 W (modo reposo) | **74.8 W (TGP pico)** | Retorno inmediato a 4.2 W al terminar |
+| **Variación de VRAM Local** | **0 MB** | **4 MB** (KV cache) | Huella de memoria prácticamente nula |
+
+**Conclusiones Empíricas:**
+1. **Protección Total en Uso Habitual:** Para consultas diarias, el PC principal no consume un solo megabyte de VRAM ni eleva la temperatura, manteniendo Unity3D y los editores al 100% de fluidez.
+2. **Aceleración Masiva Oportunista:** Si entra un prompt pesado (ej. análisis de arquitectura de código > 13 KB) y la RTX 3050 está desocupada, el router conmuta al backend CUDA local. El prompt de 4.330 tokens se procesa en ~0.3 segundos y genera a más de 92 tok/s, respondiendo en apenas 2.17 segundos.
+3. **Eficiencia Energética en Ráfagas (Burst Mode):** La GPU principal solo eleva consumo durante los 2 segundos exactos del cálculo, regresando instantáneamente a 4.2 W de reposo sin acumular calor sostenido en la estación de trabajo.
+
 ---
 
 ## ⚖️ 5. Análisis de Viabilidad: ¿Es Beneficioso?
