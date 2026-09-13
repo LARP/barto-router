@@ -1,58 +1,61 @@
+import sys
 import json
-import subprocess
+import time
+import uuid
 import urllib.request
 import urllib.error
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-# Configuraciones de endpoints
-NODO_SECUNDARIO_URL = "http://192.168.100.105:8080"
-LOCAL_HOST_URL = "http://127.0.0.1:8081" # llama-server local si se arranca en RTX 3050
+from policy import PolicyEngine, ThresholdPolicy, NodeStatus
+from telemetry import TelemetryLogger, TelemetryRecord
 
-# Umbrales del Router Adaptativo
-MAX_PROMPT_CHARS_FOR_NODO = 3000   # ~1.000 - 1.500 tokens
-MAX_GPU_UTIL_FOR_LOCAL = 15        # Si la RTX 3050 pasa del 15% (ej. Unity en Play), no usar local
+# Inicializar motor de políticas y logger de telemetría
+engine = PolicyEngine(default_policy=ThresholdPolicy())
+telemetry = TelemetryLogger("telemetry.jsonl")
 
-def is_rtx_available():
-    """Verifica si la RTX 3050 está en reposo (idle) para recibir cómputo de IA."""
-    try:
-        cmd = ["nvidia-smi", "--query-gpu=utilization.gpu,memory.free", "--format=csv,noheader,nounits"]
-        output = subprocess.check_output(cmd, creationflags=subprocess.CREATE_NO_WINDOW).decode().strip()
-        util_str, free_mem_str = output.split(",")
-        gpu_util = int(util_str.strip())
-        free_mem = int(free_mem_str.strip())
-        # Disponible si el uso es bajo y tiene al menos 3 GB de VRAM libre
-        return gpu_util < MAX_GPU_UTIL_FOR_LOCAL and free_mem > 3000
-    except Exception:
-        return False
-
-def decide_target(body_bytes):
-    """
-    Decide si la consulta va al Nodo Secundario (GT 1030) o al PC Principal (RTX 3050).
-    """
-    try:
-        data = json.loads(body_bytes.decode("utf-8"))
-        total_chars = 0
-        for msg in data.get("messages", []):
-            total_chars += len(msg.get("content", ""))
-
-        # 1. Si el prompt es muy largo (supera umbral del nodo) y la RTX local está libre:
-        # enviamos a RTX local (si está disponible el servicio local)
-        if total_chars > MAX_PROMPT_CHARS_FOR_NODO and is_rtx_available():
-            return "LOCAL_RTX", LOCAL_HOST_URL
-
-        # 2. Por defecto: Proteger la GPU del PC Principal y enviar al Nodo Secundario
-        return "NODO_SECUNDARIO", NODO_SECUNDARIO_URL
-    except Exception:
-        return "NODO_SECUNDARIO", NODO_SECUNDARIO_URL
-
-class RouterHandler(BaseHTTPRequestHandler):
+class ModularRouterHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
-        pass # Silenciar logs por defecto para consola limpia
+        pass # Consola limpia
 
     def do_GET(self):
-        # Rutear peticiones GET (como /v1/models o /health)
-        target_name, target_base = "NODO_SECUNDARIO", NODO_SECUNDARIO_URL
-        target_url = f"{target_base}{self.path}"
+        # 1. Endpoint de Telemetría interna
+        if self.path in ["/telemetry", "/telemetry/"]:
+            try:
+                records = []
+                if sys.platform:
+                    try:
+                        with open("telemetry.jsonl", "r", encoding="utf-8") as f:
+                            for line in f.readlines()[-20:]: # Últimos 20 registros
+                                if line.strip():
+                                    records.append(json.loads(line))
+                    except FileNotFoundError:
+                        pass
+                data = json.dumps({"status": "ok", "recent_requests": records}, indent=2).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+                return
+            except Exception as e:
+                self.send_error(500, f"Error leyendo telemetria: {e}")
+                return
+
+        # 2. Endpoint Health check en vivo con latencias y estado
+        if self.path in ["/health", "/health/"]:
+            summary = engine.get_status_summary()
+            summary["status"] = "ok"
+            body = json.dumps(summary, indent=2).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        # 3. Proxear peticiones GET (como /v1/models) al nodo secundario por defecto
+        target_backend = engine.get_backend("NODO_SECUNDARIO")
+        target_url = f"{target_backend.base_url}{self.path}"
         try:
             req = urllib.request.Request(target_url, headers=dict(self.headers))
             with urllib.request.urlopen(req, timeout=10) as resp:
@@ -65,19 +68,44 @@ class RouterHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(data)
         except Exception as e:
-            self.send_error(502, f"Error conectando a backend ({target_name}): {e}")
+            self.send_error(502, f"Error conectando a backend ({target_backend.name}): {e}")
 
     def do_POST(self):
+        req_id = str(uuid.uuid4())[:8]
+        start_time = time.time()
+        
         content_length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(content_length)
 
-        target_name, target_base = decide_target(body)
-        target_url = f"{target_base}{self.path}"
+        # Parsear payload para la Policy
+        req_json = {}
+        try:
+            req_json = json.loads(body.decode("utf-8"))
+        except Exception:
+            pass
 
-        import time
-        start_time = time.time()
-        print(f"\n[barto-router] [INFO] Nueva consulta recibida ({content_length} bytes)", flush=True)
-        print(f"               |-> Destino: {target_name}", flush=True)
+        # 1. Consultar a PolicyEngine
+        selected_backend, decision_reason = engine.decide(req_json)
+        prompt_chars = sum(len(m.get("content", "")) for m in req_json.get("messages", []) if isinstance(m, dict))
+        
+        record = TelemetryRecord(
+            request_id=req_id,
+            policy_name=engine.policy.name,
+            decision_backend=selected_backend.name,
+            decision_reason=decision_reason,
+            prompt_chars=prompt_chars
+        )
+
+        print(f"\n[ROUTER-{req_id}] Nueva petición ({content_length} bytes)")
+        print(f"            |-> Decisión: {selected_backend.name} ({decision_reason})")
+
+        # 2. Despachar petición con soporte de fallback
+        target_url = f"{selected_backend.base_url}{self.path}"
+        executed_backend = selected_backend
+        fallback_occurred = False
+        fallback_reason = None
+        resp_data = None
+        status_code = 200
 
         try:
             req = urllib.request.Request(
@@ -87,58 +115,93 @@ class RouterHandler(BaseHTTPRequestHandler):
                 method="POST"
             )
             with urllib.request.urlopen(req, timeout=120) as resp:
-                data = resp.read()
-                elapsed = time.time() - start_time
-                self.send_response(resp.status)
-                for k, v in resp.getheaders():
-                    if k.lower() not in ["content-length", "transfer-encoding"]:
-                        self.send_header(k, v)
-                self.send_header("X-Processed-By", target_name)
-                self.send_header("Content-Length", str(len(data)))
-                self.end_headers()
-                self.wfile.write(data)
-                print(f"               |-> [OK] Respondido en {elapsed:.2f}s [{target_name}]", flush=True)
-        except urllib.error.HTTPError as e:
-            err_data = e.read()
-            self.send_response(e.code)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(err_data)))
-            self.end_headers()
-            self.wfile.write(err_data)
-        except Exception as e:
-            # Fallback automático: si falló el primario, probar nodo secundario
-            if target_base != NODO_SECUNDARIO_URL:
-                print(f"[ROUTER] Reintentando por fallback en NODO_SECUNDARIO...")
-                fallback_url = f"{NODO_SECUNDARIO_URL}{self.path}"
-                try:
-                    req_fb = urllib.request.Request(fallback_url, data=body, headers=dict(self.headers), method="POST")
-                    with urllib.request.urlopen(req_fb, timeout=120) as resp:
-                        self.send_response(resp.status)
-                        for k, v in resp.getheaders():
-                            if k.lower() not in ["content-length", "transfer-encoding"]:
-                                self.send_header(k, v)
-                        data = resp.read()
-                        self.send_header("Content-Length", str(len(data)))
-                        self.end_headers()
-                        self.wfile.write(data)
-                        return
-                except Exception as fb_err:
-                    self.send_error(502, f"Fallo primario y fallback: {fb_err}")
-            else:
-                self.send_error(502, f"Error conectando al nodo: {e}")
+                status_code = resp.status
+                resp_data = resp.read()
+        except Exception as primary_err:
+            # Fallback automático
+            fallback_backend_name = "NODO_SECUNDARIO" if selected_backend.name == "LOCAL_RTX" else "LOCAL_RTX"
+            fallback_backend = engine.get_backend(fallback_backend_name)
+            print(f"[ROUTER-{req_id}] [!] Fallo en {selected_backend.name}: {primary_err}")
+            print(f"            |-> Activando Fallback a: {fallback_backend.name}...")
+            
+            fallback_url = f"{fallback_backend.base_url}{self.path}"
+            try:
+                fb_req = urllib.request.Request(
+                    fallback_url,
+                    data=body,
+                    headers=dict(self.headers),
+                    method="POST"
+                )
+                with urllib.request.urlopen(fb_req, timeout=120) as fb_resp:
+                    status_code = fb_resp.status
+                    resp_data = fb_resp.read()
+                    executed_backend = fallback_backend
+                    fallback_occurred = True
+                    fallback_reason = f"Fallo en {selected_backend.name}: {primary_err}"
+            except Exception as fb_err:
+                elapsed_ms = (time.time() - start_time) * 1000
+                record.finalize(
+                    execution_backend=selected_backend.name,
+                    total_time_ms=elapsed_ms,
+                    success=False,
+                    error_message=f"Fallo primario ({primary_err}) y fallback ({fb_err})"
+                )
+                telemetry.log(record)
+                self.send_error(502, f"Fallo primario y fallback: {fb_err}")
+                return
 
-def run_router(port=9000):
-    server = HTTPServer(("127.0.0.1", port), RouterHandler)
-    print("=" * 65)
-    print(f"  ROUTER ADAPTATIVO DE IA ACTIVO EN: http://127.0.0.1:{port}/v1")
-    print(f"  • Nodo Secundario (Default/Proteccion GPU): {NODO_SECUNDARIO_URL}")
-    print(f"  • Umbral de desvío automático: prompts > {MAX_PROMPT_CHARS_FOR_NODO} chars")
-    print("=" * 65)
+        # 3. Finalizar métricas y responder al cliente
+        elapsed_ms = (time.time() - start_time) * 1000
+        p_tokens = 0
+        c_tokens = 0
+        try:
+            res_obj = json.loads(resp_data.decode("utf-8"))
+            usage = res_obj.get("usage", {})
+            p_tokens = usage.get("prompt_tokens", 0)
+            c_tokens = usage.get("completion_tokens", 0)
+        except Exception:
+            pass
+
+        record.finalize(
+            execution_backend=executed_backend.name,
+            total_time_ms=elapsed_ms,
+            prompt_tokens=p_tokens,
+            completion_tokens=c_tokens,
+            success=True,
+            fallback_occurred=fallback_occurred,
+            fallback_reason=fallback_reason
+        )
+        telemetry.log(record)
+
+        self.send_response(status_code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("X-Request-ID", req_id)
+        self.send_header("X-Decision-Backend", selected_backend.name)
+        self.send_header("X-Execution-Backend", executed_backend.name)
+        self.send_header("X-Fallback", "true" if fallback_occurred else "false")
+        self.send_header("X-Total-Time-Ms", str(round(elapsed_ms, 2)))
+        self.send_header("Content-Length", str(len(resp_data)))
+        self.end_headers()
+        self.wfile.write(resp_data)
+        
+        print(f"            |-> [OK] Ejecutado en {executed_backend.name} en {elapsed_ms/1000.0:.2f}s "
+              f"({c_tokens} tokens generados) | Fallback: {fallback_occurred}")
+
+def run_server(port=9000):
+    server = HTTPServer(("127.0.0.1", port), ModularRouterHandler)
+    print("=" * 68)
+    print(f"  BARTO-ROUTER v0.2 (Modular: Router + PolicyEngine + Telemetry)")
+    print(f"  • Escuchando en: http://127.0.0.1:{port}/v1")
+    print(f"  • Política Activa: {engine.policy.name}")
+    print(f"  • Backends registrados:")
+    for k, b in engine.backends.items():
+        print(f"    - [{k}] -> {b.base_url}")
+    print("=" * 68)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\nDeteniendo Router...")
+        print("\nDeteniendo router...")
         server.server_close()
 
 if __name__ == "__main__":
-    run_router(port=9000)
+    run_server(port=9000)
