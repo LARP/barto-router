@@ -326,17 +326,16 @@ No implica que el tamaño del prompt sea por sí solo una política óptima para
 
 ---
 
-## E. Comparativa de Tiempos de Generación según el Motor de Ejecución
+## E. Comparativa de Tiempos de Generación según el Motor Local
 
-Tomando como referencia la generación completa de un documento técnico extenso (como la redacción de este README, de ~13.500 caracteres / ~3.400 tokens), los tiempos calculados a partir de las tasas empíricas de generación medidas son:
+Tomando como referencia la generación completa de un documento técnico extenso (como la redacción de este README, de ~13.500 caracteres / ~3.400 tokens), los tiempos calculados a partir de las tasas empíricas de generación medidas entre los nodos locales son:
 
-| Motor de Ejecución | Velocidad Típica | Tiempo Estimado (~3.400 tokens) | Rol Adecuado dentro de la Arquitectura |
+| Motor de Ejecución Local | Velocidad Típica | Tiempo Estimado (~3.400 tokens) | Rol Adecuado dentro de la Arquitectura |
 |---|---|---|---|
 | **IA Local Nodo Secundario (GT 1030 2 GB Vulkan)** | ~44,6 tokens/s | **~75 a 85 segundos** | Consultas cotidianas, refactorizaciones cortas (<500 tokens), asistencia sin consumo de VRAM en PC principal. |
 | **IA Local Nodo Principal (RTX 3050 6 GB CUDA)** | ~92 a 136 tokens/s | **~25 a 30 segundos** | Cargas pesadas por ráfagas, código extenso, simulación (>3.000 chars) cuando la estación está libre. |
-| **Model Cloud / Frontier (ej. Model Antigravity)** | Cómputo distribuido en datacenter | **~2 a 3 segundos** | Redacción masiva de documentación, razonamiento arquitectónico global y tareas de desarrollo agéntico. |
 
-Esta comparativa fundamenta la visión de `barto-router`: el nodo secundario y el nodo principal resuelven la privacidad y la asistencia de código habitual a coste cero y con aislamiento de recursos de la estación de trabajo, mientras que tareas de escala masiva pueden reservarse para ráfagas locales o servicios de mayor envergadura.
+> *Nota metodológica:* Conforme a la auditoría técnica v0.4 ([INFORME_TECNICO_OFICIAL_v0.4.md](INFORME_TECNICO_OFICIAL_v0.4.md)), las comparativas contra servicios cloud externos han sido excluidas de la evidencia empírica por carecer de protocolo reproducible idéntico y centrarse el proyecto en computación distribuida local heterogénea.
 
 ---
 
@@ -524,39 +523,54 @@ Se ha establecido y ejecutado la suite de benchmark reproducible ([benchmark.py]
 
 ---
 
-# 🗺️ 12. Plan de desarrollo v0.2
+# 🗺️ 12. Mapa de Ruta Oficial: Plan de Evolución en 10 Etapas (v0.3 / v0.4)
 
-La versión **v0.2** ha completado exitosamente su fase de consolidación, modularidad e instrumentación.
+El plan de evolución técnica ha sido formalizado y auditado en el [INFORME_TECNICO_OFICIAL_v0.4.md](INFORME_TECNICO_OFICIAL_v0.4.md). El objetivo prioritario es convertir el router en un **sistema consciente de recursos y costo estimado calibrado con rigor estadístico (N=5)**.
 
-## P0 — Documentación ✅
-- [x] Separar resultados demostrados de funcionalidades futuras.
-- [x] Eliminar afirmaciones absolutas no justificadas por las pruebas.
-- [x] Documentar limitaciones experimentales.
-- [x] Mantener resultados reproducibles claramente identificados.
+---
 
-## P1 — PolicyEngine ✅
-- [x] Extraer la lógica de decisión de `router.py` hacia `policy.py`.
-- [x] Definir interfaz estable `BasePolicy.decide(request, backends)`.
-- [x] Implementar política inicial `ThresholdPolicy_v0.2` health-aware.
-- [x] Permitir sustituir la política sin modificar el router.
+### Hitos de la Versión v0.2 (Consolidada) ✅
 
-## P2 — Telemetría ✅
-- [x] Generación de `request_id` único por petición.
-- [x] Registro estructurado en `telemetry.jsonl` y cabeceras HTTP (`X-Request-ID`, `X-Decision-Backend`, `X-Execution-Backend`, `X-Total-Time-Ms`, `X-Fallback`).
-- [x] Endpoint `GET /telemetry` para consultar el historial en vivo.
-- [x] Métricas de TTFT, tiempo total, tokens generados y tokens/segundo.
+- [x] **P0 — Documentación:** Categorización estricta (Demostrado, Experimental, Futuro).
+- [x] **P1 — PolicyEngine:** Desacoplamiento de `Router` e interfaz `BasePolicy`.
+- [x] **P2 — Telemetría:** `request_id`, persistencia en `telemetry.jsonl` y cabeceras HTTP.
+- [x] **P3 — Health y Recuperación:** Monitor heartbeat en segundo plano (`health.py`) con estados `ONLINE`, `BUSY`, `DEGRADED`, `OFFLINE` y latencia en ms.
+- [x] **P4 — Benchmark Base:** Suite automatizada reproducible con captura de TTFT.
 
-## P3 — Health y recuperación ✅
-- [x] Estados explícitos de nodo (`ONLINE`, `BUSY`, `DEGRADED`, `OFFLINE`).
-- [x] Health checks proactivos en segundo plano (Heartbeat cada 5s en `health.py`).
-- [x] Medición continua de latencia LAN en milisegundos.
-- [x] Endpoint `GET /health` enriquecido con latencias vivas de cada backend.
-- [x] Fallback automático y preventivo ante desconexión o saturación.
+---
 
-## P4 — Benchmark ✅
-- [x] Suite reproducible implementada en `benchmark.py`.
-- [x] Escenarios automatizados: Small, Medium, Large (>13 KB) y Concurrencia (3 hilos).
-- [x] Exportación formal de evidencia a `benchmark_v02_results.json`.
+### 🚀 Plan de Implementación Oficial Aprobado (10 Etapas Priorizadas)
+
+#### Fase I: Diagnóstico y Regularización Estadística (Etapas 1 a 5)
+
+- [ ] **Etapa 1 — Medición de VRAM Segura bajo Carga Interactiva (Prioridad Máxima):**
+  * Determinar el presupuesto dinámico de VRAM que puede utilizar Barto en el PC principal sin alterar la varianza de frame-time ni la latencia de input en Unity (según protocolo de la Sección 6 del informe).
+  * *Criterio de salida 7.3-A:* Si el presupuesto seguro es ~0 MiB bajo carga, se documenta el abandono de la inferencia local oportunista y se orienta el router exclusivamente al nodo remoto.
+- [ ] **Etapa 2 — Aislamiento del Overhead de TTFT (Hipótesis H-1):**
+  * Descomponer el TTFT de ~1,9 s en peticiones cortas (overhead de conexión HTTP, cold-start, cola en llama-server).
+- [ ] **Etapa 3 — Regularización Estadística del Benchmark:**
+  * Elevar a $N=5$ corridas por escenario con 1 warmup descartado; reportar media $\pm$ desviación estándar y percentiles p50/p95 (`benchmark_v03_results.json`).
+  * *Criterio de salida 7.3-B:* Si la varianza entre corridas es irreducible (>25%), detener el plan por entorno no medible.
+- [ ] **Etapa 4 — Evaluación de KV Cache Cuantizado (Q8 en GT 1030):**
+  * Probar `--cache-type-k q8_0 --cache-type-v q8_0` en el nodo secundario con criterio de regresión <5%.
+- [ ] **Etapa 5 — Calibración Empírica de Throughput, Latencia y Distribución de Error:**
+  * Análisis offline de `telemetry.jsonl` para obtener tasas reales por backend y la distribución del error percentilar de estimación de tokens.
+
+> **Punto de Control con Dirección:** Revisión obligatoria de datos antes de iniciar la Fase II.
+
+#### Fase II: Políticas Avanzadas y Resiliencia (Etapas 6 a 10)
+
+- [ ] **Etapa 6 — Implementación de `CostEstimationPolicy`:**
+  * Política de costo estimado temporal calibrada con datos de la Etapa 5 y `PROTECTION_FACTOR` derivado del P90 de error:
+    $$\text{costo\_remoto} < \text{costo\_local} \times \text{PROTECTION\_FACTOR}$$
+- [ ] **Etapa 7 — Integración del Presupuesto Dinámico de VRAM:**
+  * Filtro duro en la política: si la VRAM requerida supera el margen medido en la Etapa 1, derivar obligatoriamente a remoto.
+- [ ] **Etapa 8 — Pruebas de Liberación y Recálculo de Recursos:**
+  * Verificación de liberación inmediata de memoria tras ráfagas locales.
+- [ ] **Etapa 9 — Inyección de Fallos y Validación de Fallback:**
+  * Tolerancia a caídas súbitas del proceso o del cable de red con recuperación menor a 10 s.
+- [ ] **Etapa 10 — Concurrencia a Escala y Evaluación Final:**
+  * Barrido de 1, 3, 5, 10 y 20 peticiones simultáneas con backpressure explícito.
 
 ---
 
