@@ -1,0 +1,15 @@
+[Unit]
+Description=Llama.cpp API Server (GT 1030 Vulkan)
+After=network.target
+
+[Service]
+Type=simple
+User=code
+Group=code
+WorkingDirectory=/data/repositories/llama.cpp
+ExecStart=/data/repositories/llama.cpp/build/bin/llama-server -m /data/models/Llama-3.2-1B-Instruct-Q4_K_M.gguf -ngl 99 -c 4096 --host 0.0.0.0 --port 8080 --jinja --skip-chat-parsing
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
