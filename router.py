@@ -6,11 +6,11 @@ import urllib.request
 import urllib.error
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-from policy import PolicyEngine, ThresholdPolicy, NodeStatus
+from policy import PolicyEngine, CostEstimationPolicy, ThresholdPolicy, NodeStatus
 from telemetry import TelemetryLogger, TelemetryRecord
 
-# Inicializar motor de políticas y logger de telemetría
-engine = PolicyEngine(default_policy=ThresholdPolicy())
+# Inicializar motor de políticas (CostEstimationPolicy calibrada v0.4) y logger de telemetría
+engine = PolicyEngine(default_policy=CostEstimationPolicy())
 telemetry = TelemetryLogger("telemetry.jsonl")
 
 class ModularRouterHandler(BaseHTTPRequestHandler):

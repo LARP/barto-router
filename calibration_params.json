@@ -1,0 +1,28 @@
+{
+  "calibration_version": "v0.4_formal",
+  "date": "2026-09-13 15:24:37",
+  "dataset_source": "telemetry.jsonl + benchmark_v03_results.json",
+  "dataset_samples": 60,
+  "metrics": {
+    "remote": {
+      "tps_mean": 38.04,
+      "tps_p50": 42.24,
+      "ttft_ms_p50": 49.41,
+      "lan_latency_ms": 2.0
+    },
+    "local": {
+      "tps_mean": 89.36,
+      "tps_p50": 89.36,
+      "ttft_ms_p50": 25.0
+    }
+  },
+  "token_estimation_distribution": {
+    "p50_error": 0.764,
+    "p90_error": 3.1818,
+    "max_error": 3.5238
+  },
+  "derived_parameters": {
+    "protection_factor": 4.182,
+    "formula": "1 + P90(|tokens_estimados - tokens_reales| / tokens_reales)"
+  }
+}
