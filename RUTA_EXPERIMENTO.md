@@ -40,7 +40,7 @@
 
 ## Estado
 - [x] Checkpoint `v0.4-stable`
-- [ ] F0 baseline
+- [x] F0 baseline — COMPLETADO 2026-09-13: N=3, VRAM libre min 4211±32 MB (CV 0.76%), GPU 29.9%, presupuesto seguro ~2711 MB, safety 1500 MB. Unity en editor (no Play estresado), ver `resultados/f0_baseline.json`.
 - [ ] F1 curva
 - [ ] F2 fallo
 - [ ] F3 liberación
