@@ -1,0 +1,514 @@
+{
+  "benchmark_version": "v0.3_regularized_N5",
+  "timestamp": "2026-09-13 15:17:41",
+  "methodology": "1 Warmup descartada + N=5 mediciones por escenario",
+  "health_baseline": {
+    "policy": "ThresholdPolicy_v0.2",
+    "backends": {
+      "NODO_SECUNDARIO": {
+        "status": "ONLINE",
+        "url": "http://192.168.100.105:8080",
+        "latency_ms": 1.62,
+        "last_check": "2026-09-13 15:17:40"
+      },
+      "LOCAL_RTX": {
+        "status": "ONLINE",
+        "url": "http://127.0.0.1:8081",
+        "latency_ms": 0.0,
+        "last_check": "2026-09-13 15:17:40"
+      }
+    },
+    "status": "ok"
+  },
+  "gpu_initial": {
+    "util_percent": 33,
+    "mem_used_mb": 2459,
+    "mem_free_mb": 3544,
+    "temp_c": 57,
+    "power_w": 5.67
+  },
+  "scenarios": [
+    {
+      "scenario_name": "1. Small Prompt (Consulta Corta)",
+      "prompt_chars": 51,
+      "target_max_tokens": 60,
+      "warmup_run": {
+        "success": true,
+        "request_id": "9d3a1324",
+        "decision_backend": "NODO_SECUNDARIO",
+        "execution_backend": "NODO_SECUNDARIO",
+        "fallback": "false",
+        "prompt_chars": 51,
+        "tokens_generated": 60,
+        "ttft_ms": 404.61,
+        "total_time_s": 1.816,
+        "tokens_per_second": 33.04
+      },
+      "runs_n": 5,
+      "execution_backends": [
+        "NODO_SECUNDARIO"
+      ],
+      "metrics": {
+        "ttft_ms": {
+          "mean": 38.02,
+          "stdev": 8.03,
+          "p50": 34.47,
+          "p95": 47.78,
+          "min": 30.96,
+          "max": 48.6,
+          "cv_percent": 21.12
+        },
+        "total_time_s": {
+          "mean": 1.4,
+          "stdev": 0.07,
+          "p50": 1.43,
+          "p95": 1.46,
+          "min": 1.29,
+          "max": 1.47,
+          "cv_percent": 5.0
+        },
+        "tokens_per_second": {
+          "mean": 41.24,
+          "stdev": 0.7,
+          "p50": 41.21,
+          "p95": 42.01,
+          "min": 40.31,
+          "max": 42.08,
+          "cv_percent": 1.7
+        }
+      },
+      "raw_runs": [
+        {
+          "success": true,
+          "request_id": "3ea9bd01",
+          "decision_backend": "NODO_SECUNDARIO",
+          "execution_backend": "NODO_SECUNDARIO",
+          "fallback": "false",
+          "prompt_chars": 51,
+          "tokens_generated": 60,
+          "ttft_ms": 30.96,
+          "total_time_s": 1.426,
+          "tokens_per_second": 42.08
+        },
+        {
+          "success": true,
+          "request_id": "6b7647c9",
+          "decision_backend": "NODO_SECUNDARIO",
+          "execution_backend": "NODO_SECUNDARIO",
+          "fallback": "false",
+          "prompt_chars": 51,
+          "tokens_generated": 60,
+          "ttft_ms": 34.47,
+          "total_time_s": 1.438,
+          "tokens_per_second": 41.73
+        },
+        {
+          "success": true,
+          "request_id": "123326e8",
+          "decision_backend": "NODO_SECUNDARIO",
+          "execution_backend": "NODO_SECUNDARIO",
+          "fallback": "false",
+          "prompt_chars": 51,
+          "tokens_generated": 60,
+          "ttft_ms": 48.6,
+          "total_time_s": 1.467,
+          "tokens_per_second": 40.89
+        },
+        {
+          "success": true,
+          "request_id": "3ce1a3c4",
+          "decision_backend": "NODO_SECUNDARIO",
+          "execution_backend": "NODO_SECUNDARIO",
+          "fallback": "false",
+          "prompt_chars": 51,
+          "tokens_generated": 52,
+          "ttft_ms": 44.5,
+          "total_time_s": 1.29,
+          "tokens_per_second": 40.31
+        },
+        {
+          "success": true,
+          "request_id": "cb26704a",
+          "decision_backend": "NODO_SECUNDARIO",
+          "execution_backend": "NODO_SECUNDARIO",
+          "fallback": "false",
+          "prompt_chars": 51,
+          "tokens_generated": 57,
+          "ttft_ms": 31.55,
+          "total_time_s": 1.383,
+          "tokens_per_second": 41.21
+        }
+      ]
+    },
+    {
+      "scenario_name": "2. Medium Prompt (Contexto Medio)",
+      "prompt_chars": 240,
+      "target_max_tokens": 120,
+      "warmup_run": {
+        "success": true,
+        "request_id": "7819b664",
+        "decision_backend": "NODO_SECUNDARIO",
+        "execution_backend": "NODO_SECUNDARIO",
+        "fallback": "false",
+        "prompt_chars": 240,
+        "tokens_generated": 120,
+        "ttft_ms": 236.46,
+        "total_time_s": 3.071,
+        "tokens_per_second": 39.08
+      },
+      "runs_n": 5,
+      "execution_backends": [
+        "NODO_SECUNDARIO"
+      ],
+      "metrics": {
+        "ttft_ms": {
+          "mean": 53.9,
+          "stdev": 7.27,
+          "p50": 49.41,
+          "p95": 62.12,
+          "min": 47.47,
+          "max": 62.32,
+          "cv_percent": 13.49
+        },
+        "total_time_s": {
+          "mean": 2.87,
+          "stdev": 0.01,
+          "p50": 2.87,
+          "p95": 2.89,
+          "min": 2.86,
+          "max": 2.9,
+          "cv_percent": 0.35
+        },
+        "tokens_per_second": {
+          "mean": 41.74,
+          "stdev": 0.2,
+          "p50": 41.79,
+          "p95": 41.93,
+          "min": 41.43,
+          "max": 41.96,
+          "cv_percent": 0.48
+        }
+      },
+      "raw_runs": [
+        {
+          "success": true,
+          "request_id": "5e067b30",
+          "decision_backend": "NODO_SECUNDARIO",
+          "execution_backend": "NODO_SECUNDARIO",
+          "fallback": "false",
+          "prompt_chars": 240,
+          "tokens_generated": 120,
+          "ttft_ms": 49.41,
+          "total_time_s": 2.86,
+          "tokens_per_second": 41.96
+        },
+        {
+          "success": true,
+          "request_id": "392f084b",
+          "decision_backend": "NODO_SECUNDARIO",
+          "execution_backend": "NODO_SECUNDARIO",
+          "fallback": "false",
+          "prompt_chars": 240,
+          "tokens_generated": 120,
+          "ttft_ms": 62.32,
+          "total_time_s": 2.896,
+          "tokens_per_second": 41.43
+        },
+        {
+          "success": true,
+          "request_id": "6e8c46a8",
+          "decision_backend": "NODO_SECUNDARIO",
+          "execution_backend": "NODO_SECUNDARIO",
+          "fallback": "false",
+          "prompt_chars": 240,
+          "tokens_generated": 120,
+          "ttft_ms": 47.47,
+          "total_time_s": 2.871,
+          "tokens_per_second": 41.79
+        },
+        {
+          "success": true,
+          "request_id": "729a2cb6",
+          "decision_backend": "NODO_SECUNDARIO",
+          "execution_backend": "NODO_SECUNDARIO",
+          "fallback": "false",
+          "prompt_chars": 240,
+          "tokens_generated": 120,
+          "ttft_ms": 61.31,
+          "total_time_s": 2.878,
+          "tokens_per_second": 41.7
+        },
+        {
+          "success": true,
+          "request_id": "10c5b7d5",
+          "decision_backend": "NODO_SECUNDARIO",
+          "execution_backend": "NODO_SECUNDARIO",
+          "fallback": "false",
+          "prompt_chars": 240,
+          "tokens_generated": 120,
+          "ttft_ms": 48.98,
+          "total_time_s": 2.869,
+          "tokens_per_second": 41.83
+        }
+      ]
+    },
+    {
+      "scenario_name": "3. Large Prompt (>10 KB Código)",
+      "prompt_chars": 13786,
+      "target_max_tokens": 150,
+      "warmup_run": {
+        "success": true,
+        "request_id": "25a465c6",
+        "decision_backend": "NODO_SECUNDARIO",
+        "execution_backend": "NODO_SECUNDARIO",
+        "fallback": "false",
+        "prompt_chars": 13786,
+        "tokens_generated": 150,
+        "ttft_ms": 28088.26,
+        "total_time_s": 32.14,
+        "tokens_per_second": 4.67
+      },
+      "runs_n": 5,
+      "execution_backends": [
+        "LOCAL_RTX",
+        "NODO_SECUNDARIO"
+      ],
+      "metrics": {
+        "ttft_ms": {
+          "mean": 233.14,
+          "stdev": 193.5,
+          "p50": 148.73,
+          "p95": 494.68,
+          "min": 132.46,
+          "max": 578.91,
+          "cv_percent": 83.0
+        },
+        "total_time_s": {
+          "mean": 3.68,
+          "stdev": 1.12,
+          "p50": 4.18,
+          "p95": 4.22,
+          "min": 1.68,
+          "max": 4.22,
+          "cv_percent": 30.43
+        },
+        "tokens_per_second": {
+          "mean": 46.57,
+          "stdev": 23.92,
+          "p50": 35.89,
+          "p95": 78.74,
+          "min": 35.51,
+          "max": 89.36,
+          "cv_percent": 51.36
+        }
+      },
+      "raw_runs": [
+        {
+          "success": true,
+          "request_id": "fffc47b5",
+          "decision_backend": "NODO_SECUNDARIO",
+          "execution_backend": "NODO_SECUNDARIO",
+          "fallback": "false",
+          "prompt_chars": 13786,
+          "tokens_generated": 150,
+          "ttft_ms": 157.75,
+          "total_time_s": 4.18,
+          "tokens_per_second": 35.89
+        },
+        {
+          "success": true,
+          "request_id": "16774a81",
+          "decision_backend": "NODO_SECUNDARIO",
+          "execution_backend": "NODO_SECUNDARIO",
+          "fallback": "false",
+          "prompt_chars": 13786,
+          "tokens_generated": 150,
+          "ttft_ms": 148.73,
+          "total_time_s": 4.224,
+          "tokens_per_second": 35.51
+        },
+        {
+          "success": true,
+          "request_id": "dd55232e",
+          "decision_backend": "LOCAL_RTX",
+          "execution_backend": "LOCAL_RTX",
+          "fallback": "false",
+          "prompt_chars": 13786,
+          "tokens_generated": 150,
+          "ttft_ms": 578.91,
+          "total_time_s": 1.679,
+          "tokens_per_second": 89.36
+        },
+        {
+          "success": true,
+          "request_id": "8cf3974e",
+          "decision_backend": "NODO_SECUNDARIO",
+          "execution_backend": "NODO_SECUNDARIO",
+          "fallback": "false",
+          "prompt_chars": 13786,
+          "tokens_generated": 150,
+          "ttft_ms": 147.87,
+          "total_time_s": 4.185,
+          "tokens_per_second": 35.84
+        },
+        {
+          "success": true,
+          "request_id": "84e959fe",
+          "decision_backend": "NODO_SECUNDARIO",
+          "execution_backend": "NODO_SECUNDARIO",
+          "fallback": "false",
+          "prompt_chars": 13786,
+          "tokens_generated": 150,
+          "ttft_ms": 132.46,
+          "total_time_s": 4.136,
+          "tokens_per_second": 36.27
+        }
+      ]
+    },
+    {
+      "scenario_name": "Concurrent_3",
+      "concurrency_level": 3,
+      "rounds_n": 3,
+      "mean_elapsed_s": 3.13,
+      "stdev_elapsed_s": 0.32,
+      "rounds": [
+        {
+          "round": 1,
+          "elapsed_s": 3.5,
+          "success_rate": "3/3",
+          "items": [
+            {
+              "success": true,
+              "request_id": "84631da6",
+              "decision_backend": "NODO_SECUNDARIO",
+              "execution_backend": "NODO_SECUNDARIO",
+              "fallback": "false",
+              "prompt_chars": 53,
+              "tokens_generated": 40,
+              "ttft_ms": 345.6,
+              "total_time_s": 1.273,
+              "tokens_per_second": 31.43
+            },
+            {
+              "success": true,
+              "request_id": "ecb2b867",
+              "decision_backend": "NODO_SECUNDARIO",
+              "execution_backend": "NODO_SECUNDARIO",
+              "fallback": "false",
+              "prompt_chars": 53,
+              "tokens_generated": 40,
+              "ttft_ms": 1463.78,
+              "total_time_s": 2.389,
+              "tokens_per_second": 16.74
+            },
+            {
+              "success": true,
+              "request_id": "6258a5e0",
+              "decision_backend": "NODO_SECUNDARIO",
+              "execution_backend": "NODO_SECUNDARIO",
+              "fallback": "false",
+              "prompt_chars": 53,
+              "tokens_generated": 40,
+              "ttft_ms": 2565.69,
+              "total_time_s": 3.502,
+              "tokens_per_second": 11.42
+            }
+          ]
+        },
+        {
+          "round": 2,
+          "elapsed_s": 2.93,
+          "success_rate": "3/3",
+          "items": [
+            {
+              "success": true,
+              "request_id": "02a040e0",
+              "decision_backend": "NODO_SECUNDARIO",
+              "execution_backend": "NODO_SECUNDARIO",
+              "fallback": "false",
+              "prompt_chars": 53,
+              "tokens_generated": 40,
+              "ttft_ms": 60.54,
+              "total_time_s": 0.991,
+              "tokens_per_second": 40.38
+            },
+            {
+              "success": true,
+              "request_id": "a79a7f42",
+              "decision_backend": "NODO_SECUNDARIO",
+              "execution_backend": "NODO_SECUNDARIO",
+              "fallback": "false",
+              "prompt_chars": 53,
+              "tokens_generated": 40,
+              "ttft_ms": 1025.97,
+              "total_time_s": 1.948,
+              "tokens_per_second": 20.53
+            },
+            {
+              "success": true,
+              "request_id": "361e5660",
+              "decision_backend": "NODO_SECUNDARIO",
+              "execution_backend": "NODO_SECUNDARIO",
+              "fallback": "false",
+              "prompt_chars": 53,
+              "tokens_generated": 40,
+              "ttft_ms": 2000.87,
+              "total_time_s": 2.93,
+              "tokens_per_second": 13.65
+            }
+          ]
+        },
+        {
+          "round": 3,
+          "elapsed_s": 2.95,
+          "success_rate": "3/3",
+          "items": [
+            {
+              "success": true,
+              "request_id": "0a8870f9",
+              "decision_backend": "NODO_SECUNDARIO",
+              "execution_backend": "NODO_SECUNDARIO",
+              "fallback": "false",
+              "prompt_chars": 53,
+              "tokens_generated": 40,
+              "ttft_ms": 54.08,
+              "total_time_s": 0.993,
+              "tokens_per_second": 40.26
+            },
+            {
+              "success": true,
+              "request_id": "4962d393",
+              "decision_backend": "NODO_SECUNDARIO",
+              "execution_backend": "NODO_SECUNDARIO",
+              "fallback": "false",
+              "prompt_chars": 53,
+              "tokens_generated": 40,
+              "ttft_ms": 1041.39,
+              "total_time_s": 1.968,
+              "tokens_per_second": 20.32
+            },
+            {
+              "success": true,
+              "request_id": "5901ee7c",
+              "decision_backend": "NODO_SECUNDARIO",
+              "execution_backend": "NODO_SECUNDARIO",
+              "fallback": "false",
+              "prompt_chars": 53,
+              "tokens_generated": 40,
+              "ttft_ms": 2023.84,
+              "total_time_s": 2.952,
+              "tokens_per_second": 13.55
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "gpu_final": {
+    "util_percent": 35,
+    "mem_used_mb": 2461,
+    "mem_free_mb": 3542,
+    "temp_c": 57,
+    "power_w": 5.35
+  }
+}

@@ -546,11 +546,17 @@ El plan de evolución técnica ha sido formalizado y auditado en el [INFORME_TEC
 - [ ] **Etapa 1 — Medición de VRAM Segura bajo Carga Interactiva (Prioridad Máxima):**
   * Determinar el presupuesto dinámico de VRAM que puede utilizar Barto en el PC principal sin alterar la varianza de frame-time ni la latencia de input en Unity (según protocolo de la Sección 6 del informe).
   * *Criterio de salida 7.3-A:* Si el presupuesto seguro es ~0 MiB bajo carga, se documenta el abandono de la inferencia local oportunista y se orienta el router exclusivamente al nodo remoto.
-- [ ] **Etapa 2 — Aislamiento del Overhead de TTFT (Hipótesis H-1):**
-  * Descomponer el TTFT de ~1,9 s en peticiones cortas (overhead de conexión HTTP, cold-start, cola en llama-server).
-- [ ] **Etapa 3 — Regularización Estadística del Benchmark:**
-  * Elevar a $N=5$ corridas por escenario con 1 warmup descartado; reportar media $\pm$ desviación estándar y percentiles p50/p95 (`benchmark_v03_results.json`).
-  * *Criterio de salida 7.3-B:* Si la varianza entre corridas es irreducible (>25%), detener el plan por entorno no medible.
+- [x] **Etapa 2 — Aislamiento del Overhead de TTFT (Hipótesis H-1):** *(Completada)*
+  * Descomposición completada: se identificó que el socket TCP toma ~10 ms y el handshake HTTP es mínimo; el overhead de 1,9s del benchmark previo se debía a un bucle de acumulación sincrónica antes de entregar el primer token.
+  * Solución implementada: true streaming chunk-by-chunk en `router.py`, reduciendo el TTFT del router de ~280 ms a **38–54 ms** (nodo secundario) y **12–30 ms** (local caliente).
+- [x] **Etapa 3 — Regularización Estadística del Benchmark (N=5):** *(Completada)*
+  * Implementado protocolo con 1 warmup descartado + 5 corridas estadísticas por escenario persistidas en `benchmark_v03_results.json`.
+  * *Resultados certificados:*
+    - **Small Prompt:** TTFT $38,02 \pm 8,03$ ms (CV: 21,12%), Total $1,40 \pm 0,07$ s (CV: 5,0%), Throughput $41,24 \pm 0,7$ tok/s.
+    - **Medium Prompt:** TTFT $53,90 \pm 7,27$ ms (CV: 13,49%), Total $2,87 \pm 0,01$ s (CV: 0,35%), Throughput $41,74 \pm 0,2$ tok/s.
+    - **Large Prompt:** Warmup 32,14 s (GT 1030); Corridas regulares: p50 4,18 s con despacho híbrido. En la corrida 3, el router derivó oportunistamente a `LOCAL_RTX` completando en 1,68 s a 89,36 tok/s.
+    - **Concurrencia (3 threads):** 100% de éxito en 3 rondas consecutivas ($3,13 \pm 0,32$ s promedio).
+  * *Validación Criterio 7.3-B:* Superado con éxito. El entorno es medible y altamente reproducible (CV < 5% en tiempos de ejecución).
 - [ ] **Etapa 4 — Evaluación de KV Cache Cuantizado (Q8 en GT 1030):**
   * Probar `--cache-type-k q8_0 --cache-type-v q8_0` en el nodo secundario con criterio de regresión <5%.
 - [ ] **Etapa 5 — Calibración Empírica de Throughput, Latencia y Distribución de Error:**

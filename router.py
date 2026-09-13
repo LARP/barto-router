@@ -84,6 +84,8 @@ class ModularRouterHandler(BaseHTTPRequestHandler):
         except Exception:
             pass
 
+        is_stream = bool(req_json.get("stream", False))
+
         # 1. Consultar a PolicyEngine
         selected_backend, decision_reason = engine.decide(req_json)
         prompt_chars = sum(len(m.get("content", "")) for m in req_json.get("messages", []) if isinstance(m, dict))
@@ -96,48 +98,39 @@ class ModularRouterHandler(BaseHTTPRequestHandler):
             prompt_chars=prompt_chars
         )
 
-        print(f"\n[ROUTER-{req_id}] Nueva petición ({content_length} bytes)")
-        print(f"            |-> Decisión: {selected_backend.name} ({decision_reason})")
+        print(f"\n[ROUTER-{req_id}] Nueva peticion ({content_length} bytes, stream={is_stream})")
+        print(f"            |-> Decision: {selected_backend.name} ({decision_reason})")
 
-        # 2. Despachar petición con soporte de fallback
-        target_url = f"{selected_backend.base_url}{self.path}"
+        # 2. Despachar petición con soporte de fallback y true streaming
+        def forward_to_backend(backend):
+            url = f"{backend.base_url}{self.path}"
+            # Clonar headers excluyendo Content-Length y Host
+            fwd_headers = {}
+            for k, v in self.headers.items():
+                if k.lower() not in ["host", "content-length"]:
+                    fwd_headers[k] = v
+            fwd_headers["Content-Type"] = self.headers.get("Content-Type", "application/json")
+            fwd_headers["Content-Length"] = str(len(body))
+            req = urllib.request.Request(url, data=body, headers=fwd_headers, method="POST")
+            return urllib.request.urlopen(req, timeout=120)
+
         executed_backend = selected_backend
         fallback_occurred = False
         fallback_reason = None
-        resp_data = None
-        status_code = 200
+        backend_resp = None
 
         try:
-            req = urllib.request.Request(
-                target_url,
-                data=body,
-                headers=dict(self.headers),
-                method="POST"
-            )
-            with urllib.request.urlopen(req, timeout=120) as resp:
-                status_code = resp.status
-                resp_data = resp.read()
+            backend_resp = forward_to_backend(selected_backend)
         except Exception as primary_err:
-            # Fallback automático
             fallback_backend_name = "NODO_SECUNDARIO" if selected_backend.name == "LOCAL_RTX" else "LOCAL_RTX"
             fallback_backend = engine.get_backend(fallback_backend_name)
             print(f"[ROUTER-{req_id}] [!] Fallo en {selected_backend.name}: {primary_err}")
             print(f"            |-> Activando Fallback a: {fallback_backend.name}...")
-            
-            fallback_url = f"{fallback_backend.base_url}{self.path}"
             try:
-                fb_req = urllib.request.Request(
-                    fallback_url,
-                    data=body,
-                    headers=dict(self.headers),
-                    method="POST"
-                )
-                with urllib.request.urlopen(fb_req, timeout=120) as fb_resp:
-                    status_code = fb_resp.status
-                    resp_data = fb_resp.read()
-                    executed_backend = fallback_backend
-                    fallback_occurred = True
-                    fallback_reason = f"Fallo en {selected_backend.name}: {primary_err}"
+                backend_resp = forward_to_backend(fallback_backend)
+                executed_backend = fallback_backend
+                fallback_occurred = True
+                fallback_reason = f"Fallo en {selected_backend.name}: {primary_err}"
             except Exception as fb_err:
                 elapsed_ms = (time.time() - start_time) * 1000
                 record.finalize(
@@ -150,50 +143,91 @@ class ModularRouterHandler(BaseHTTPRequestHandler):
                 self.send_error(502, f"Fallo primario y fallback: {fb_err}")
                 return
 
-        # 3. Finalizar métricas y responder al cliente
-        elapsed_ms = (time.time() - start_time) * 1000
-        p_tokens = 0
-        c_tokens = 0
+        # 3. Responder al cliente
         try:
-            res_obj = json.loads(resp_data.decode("utf-8"))
-            usage = res_obj.get("usage", {})
-            p_tokens = usage.get("prompt_tokens", 0)
-            c_tokens = usage.get("completion_tokens", 0)
-        except Exception:
-            pass
+            status_code = backend_resp.status
+            custom_headers = {
+                "X-Request-ID": req_id,
+                "X-Decision-Backend": selected_backend.name,
+                "X-Execution-Backend": executed_backend.name,
+                "X-Fallback": "true" if fallback_occurred else "false",
+            }
 
-        record.finalize(
-            execution_backend=executed_backend.name,
-            total_time_ms=elapsed_ms,
-            prompt_tokens=p_tokens,
-            completion_tokens=c_tokens,
-            success=True,
-            fallback_occurred=fallback_occurred,
-            fallback_reason=fallback_reason
-        )
-        telemetry.log(record)
+            if is_stream:
+                # Streaming chunked directo sin buferizar
+                self.send_response(status_code)
+                self.send_header("Content-Type", "text/event-stream")
+                self.send_header("Cache-Control", "no-cache")
+                self.send_header("Connection", "close")
+                for k, v in custom_headers.items():
+                    self.send_header(k, v)
+                self.end_headers()
 
-        self.send_response(status_code)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("X-Request-ID", req_id)
-        self.send_header("X-Decision-Backend", selected_backend.name)
-        self.send_header("X-Execution-Backend", executed_backend.name)
-        self.send_header("X-Fallback", "true" if fallback_occurred else "false")
-        self.send_header("X-Total-Time-Ms", str(round(elapsed_ms, 2)))
-        self.send_header("Content-Length", str(len(resp_data)))
-        self.end_headers()
-        self.wfile.write(resp_data)
-        
-        print(f"            |-> [OK] Ejecutado en {executed_backend.name} en {elapsed_ms/1000.0:.2f}s "
-              f"({c_tokens} tokens generados) | Fallback: {fallback_occurred}")
+                tokens_est = 0
+                for line in backend_resp:
+                    self.wfile.write(line)
+                    self.wfile.flush()
+                    if line.startswith(b"data: ") and not line.startswith(b"data: [DONE]"):
+                        tokens_est += 1
+
+                elapsed_ms = (time.time() - start_time) * 1000
+                record.finalize(
+                    execution_backend=executed_backend.name,
+                    total_time_ms=elapsed_ms,
+                    prompt_tokens=0,
+                    completion_tokens=tokens_est,
+                    success=True,
+                    fallback_occurred=fallback_occurred,
+                    fallback_reason=fallback_reason
+                )
+                telemetry.log(record)
+                print(f"            |-> [OK STREAM] {executed_backend.name} en {elapsed_ms/1000.0:.2f}s (~{tokens_est} chunks)")
+
+            else:
+                resp_data = backend_resp.read()
+                elapsed_ms = (time.time() - start_time) * 1000
+                p_tokens = 0
+                c_tokens = 0
+                try:
+                    res_obj = json.loads(resp_data.decode("utf-8"))
+                    usage = res_obj.get("usage", {})
+                    p_tokens = usage.get("prompt_tokens", 0)
+                    c_tokens = usage.get("completion_tokens", 0)
+                except Exception:
+                    pass
+
+                record.finalize(
+                    execution_backend=executed_backend.name,
+                    total_time_ms=elapsed_ms,
+                    prompt_tokens=p_tokens,
+                    completion_tokens=c_tokens,
+                    success=True,
+                    fallback_occurred=fallback_occurred,
+                    fallback_reason=fallback_reason
+                )
+                telemetry.log(record)
+
+                self.send_response(status_code)
+                self.send_header("Content-Type", "application/json")
+                for k, v in custom_headers.items():
+                    self.send_header(k, v)
+                self.send_header("X-Total-Time-Ms", str(round(elapsed_ms, 2)))
+                self.send_header("Content-Length", str(len(resp_data)))
+                self.end_headers()
+                self.wfile.write(resp_data)
+                print(f"            |-> [OK] {executed_backend.name} en {elapsed_ms/1000.0:.2f}s ({c_tokens} tokens)")
+
+        finally:
+            if backend_resp:
+                backend_resp.close()
 
 def run_server(port=9000):
     server = HTTPServer(("127.0.0.1", port), ModularRouterHandler)
     print("=" * 68)
-    print(f"  BARTO-ROUTER v0.2 (Modular: Router + PolicyEngine + Telemetry)")
-    print(f"  • Escuchando en: http://127.0.0.1:{port}/v1")
-    print(f"  • Política Activa: {engine.policy.name}")
-    print(f"  • Backends registrados:")
+    print(f"  BARTO-ROUTER v0.3-dev (True Streaming + PolicyEngine + Telemetry)")
+    print(f"  * Escuchando en: http://127.0.0.1:{port}/v1")
+    print(f"  * Politica Activa: {engine.policy.name}")
+    print(f"  * Backends registrados:")
     for k, b in engine.backends.items():
         print(f"    - [{k}] -> {b.base_url}")
     print("=" * 68)

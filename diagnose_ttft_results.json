@@ -1,0 +1,274 @@
+{
+  "tcp_raw": {
+    "secundario": {
+      "mean_ms": 9.76,
+      "min_ms": 0.79,
+      "max_ms": 16.39
+    },
+    "router": {
+      "mean_ms": 0.55,
+      "min_ms": 0.35,
+      "max_ms": 0.88
+    },
+    "local": {
+      "mean_ms": 6.48,
+      "min_ms": 0.32,
+      "max_ms": 15.72
+    }
+  },
+  "experiments": {
+    "direct_secundario_no_keepalive": [
+      {
+        "iteration": 1,
+        "ttft_ms": 32.84,
+        "total_ms": 250.65,
+        "tokens": 9,
+        "keep_alive": false,
+        "headers": {
+          "Server": "llama.cpp",
+          "Access-Control-Allow-Origin": "",
+          "X-Accel-Buffering": "no",
+          "Content-Type": "text/event-stream",
+          "Transfer-Encoding": "chunked",
+          "Keep-Alive": "timeout=5, max=100"
+        }
+      },
+      {
+        "iteration": 2,
+        "ttft_ms": 31.85,
+        "total_ms": 246.78,
+        "tokens": 9,
+        "keep_alive": false,
+        "headers": {
+          "Server": "llama.cpp",
+          "Access-Control-Allow-Origin": "",
+          "X-Accel-Buffering": "no",
+          "Content-Type": "text/event-stream",
+          "Transfer-Encoding": "chunked",
+          "Keep-Alive": "timeout=5, max=100"
+        }
+      },
+      {
+        "iteration": 3,
+        "ttft_ms": 44.58,
+        "total_ms": 257.98,
+        "tokens": 9,
+        "keep_alive": false,
+        "headers": {
+          "Server": "llama.cpp",
+          "Access-Control-Allow-Origin": "",
+          "X-Accel-Buffering": "no",
+          "Content-Type": "text/event-stream",
+          "Transfer-Encoding": "chunked",
+          "Keep-Alive": "timeout=5, max=100"
+        }
+      }
+    ],
+    "direct_secundario_keepalive": [
+      {
+        "iteration": 1,
+        "ttft_ms": 31.63,
+        "total_ms": 243.26,
+        "tokens": 9,
+        "keep_alive": true,
+        "headers": {
+          "Server": "llama.cpp",
+          "Access-Control-Allow-Origin": "",
+          "X-Accel-Buffering": "no",
+          "Content-Type": "text/event-stream",
+          "Transfer-Encoding": "chunked",
+          "Keep-Alive": "timeout=5, max=100"
+        }
+      },
+      {
+        "iteration": 2,
+        "ttft_ms": 44.96,
+        "total_ms": 256.71,
+        "tokens": 9,
+        "keep_alive": true,
+        "headers": {
+          "Server": "llama.cpp",
+          "Access-Control-Allow-Origin": "",
+          "X-Accel-Buffering": "no",
+          "Content-Type": "text/event-stream",
+          "Transfer-Encoding": "chunked",
+          "Keep-Alive": "timeout=5, max=100"
+        }
+      },
+      {
+        "iteration": 3,
+        "ttft_ms": 37.71,
+        "total_ms": 250.93,
+        "tokens": 9,
+        "keep_alive": true,
+        "headers": {
+          "Server": "llama.cpp",
+          "Access-Control-Allow-Origin": "",
+          "X-Accel-Buffering": "no",
+          "Content-Type": "text/event-stream",
+          "Transfer-Encoding": "chunked",
+          "Keep-Alive": "timeout=5, max=100"
+        }
+      }
+    ],
+    "router_proxy_no_keepalive": [
+      {
+        "iteration": 1,
+        "ttft_ms": 79.83,
+        "total_ms": 244.7,
+        "tokens": 9,
+        "keep_alive": false,
+        "headers": {
+          "Server": "BaseHTTP/0.6 Python/3.10.11",
+          "Date": "Sun, 13 Sep 2026 18:17:19 GMT",
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          "Connection": "close",
+          "X-Request-ID": "1eb6903e",
+          "X-Decision-Backend": "NODO_SECUNDARIO",
+          "X-Execution-Backend": "NODO_SECUNDARIO",
+          "X-Fallback": "false"
+        }
+      },
+      {
+        "iteration": 2,
+        "ttft_ms": 108.11,
+        "total_ms": 274.02,
+        "tokens": 9,
+        "keep_alive": false,
+        "headers": {
+          "Server": "BaseHTTP/0.6 Python/3.10.11",
+          "Date": "Sun, 13 Sep 2026 18:17:20 GMT",
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          "Connection": "close",
+          "X-Request-ID": "1eb0349b",
+          "X-Decision-Backend": "NODO_SECUNDARIO",
+          "X-Execution-Backend": "NODO_SECUNDARIO",
+          "X-Fallback": "false"
+        }
+      },
+      {
+        "iteration": 3,
+        "ttft_ms": 79.46,
+        "total_ms": 244.6,
+        "tokens": 9,
+        "keep_alive": false,
+        "headers": {
+          "Server": "BaseHTTP/0.6 Python/3.10.11",
+          "Date": "Sun, 13 Sep 2026 18:17:20 GMT",
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          "Connection": "close",
+          "X-Request-ID": "2e6e2c67",
+          "X-Decision-Backend": "NODO_SECUNDARIO",
+          "X-Execution-Backend": "NODO_SECUNDARIO",
+          "X-Fallback": "false"
+        }
+      }
+    ],
+    "router_proxy_keepalive": [
+      {
+        "iteration": 1,
+        "ttft_ms": 107.17,
+        "total_ms": 272.06,
+        "tokens": 9,
+        "keep_alive": true,
+        "headers": {
+          "Server": "BaseHTTP/0.6 Python/3.10.11",
+          "Date": "Sun, 13 Sep 2026 18:17:21 GMT",
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          "Connection": "close",
+          "X-Request-ID": "ad17adcb",
+          "X-Decision-Backend": "NODO_SECUNDARIO",
+          "X-Execution-Backend": "NODO_SECUNDARIO",
+          "X-Fallback": "false"
+        }
+      },
+      {
+        "iteration": 2,
+        "ttft_ms": 80.59,
+        "total_ms": 245.18,
+        "tokens": 9,
+        "keep_alive": true,
+        "headers": {
+          "Server": "BaseHTTP/0.6 Python/3.10.11",
+          "Date": "Sun, 13 Sep 2026 18:17:21 GMT",
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          "Connection": "close",
+          "X-Request-ID": "7e18b605",
+          "X-Decision-Backend": "NODO_SECUNDARIO",
+          "X-Execution-Backend": "NODO_SECUNDARIO",
+          "X-Fallback": "false"
+        }
+      },
+      {
+        "iteration": 3,
+        "ttft_ms": 109.65,
+        "total_ms": 274.24,
+        "tokens": 9,
+        "keep_alive": true,
+        "headers": {
+          "Server": "BaseHTTP/0.6 Python/3.10.11",
+          "Date": "Sun, 13 Sep 2026 18:17:21 GMT",
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          "Connection": "close",
+          "X-Request-ID": "af1be969",
+          "X-Decision-Backend": "NODO_SECUNDARIO",
+          "X-Execution-Backend": "NODO_SECUNDARIO",
+          "X-Fallback": "false"
+        }
+      }
+    ],
+    "direct_local_keepalive": [
+      {
+        "iteration": 1,
+        "ttft_ms": 333.19,
+        "total_ms": 395.86,
+        "tokens": 9,
+        "keep_alive": true,
+        "headers": {
+          "Server": "llama.cpp",
+          "Access-Control-Allow-Origin": "",
+          "X-Accel-Buffering": "no",
+          "Content-Type": "text/event-stream",
+          "Transfer-Encoding": "chunked",
+          "Keep-Alive": "timeout=5, max=100"
+        }
+      },
+      {
+        "iteration": 2,
+        "ttft_ms": 27.3,
+        "total_ms": 90.47,
+        "tokens": 9,
+        "keep_alive": true,
+        "headers": {
+          "Server": "llama.cpp",
+          "Access-Control-Allow-Origin": "",
+          "X-Accel-Buffering": "no",
+          "Content-Type": "text/event-stream",
+          "Transfer-Encoding": "chunked",
+          "Keep-Alive": "timeout=5, max=100"
+        }
+      },
+      {
+        "iteration": 3,
+        "ttft_ms": 26.85,
+        "total_ms": 90.35,
+        "tokens": 9,
+        "keep_alive": true,
+        "headers": {
+          "Server": "llama.cpp",
+          "Access-Control-Allow-Origin": "",
+          "X-Accel-Buffering": "no",
+          "Content-Type": "text/event-stream",
+          "Transfer-Encoding": "chunked",
+          "Keep-Alive": "timeout=5, max=100"
+        }
+      }
+    ]
+  }
+}
