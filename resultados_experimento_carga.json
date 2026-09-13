@@ -1,0 +1,33 @@
+{
+  "timestamp": "2026-09-13 13:29:22",
+  "light_test": {
+    "test_name": "TEST 1: Carga Ligera (Prompt Corto)",
+    "nodo": "NODO_SECUNDARIO",
+    "elapsed_seconds": 3.3831307888031006,
+    "prompt_chars": 81,
+    "prompt_tokens": 76,
+    "completion_tokens": 120,
+    "tokens_per_second": 35.47010372674777,
+    "gpu_max_util": 17,
+    "gpu_avg_util": 11.217391304347826,
+    "gpu_vram_delta_mb": 0,
+    "gpu_max_vram_mb": 2486,
+    "gpu_max_pwr_w": 4.17,
+    "response_preview": "¡Claro! Aquí te explico qué es el Garbage Collection en C# y cómo evitarlo en Unity:\n\n**¿Qué es el Garbage Collection en C#?**\n\nEl Garbage Collection es un mecanismo de manejo de o"
+  },
+  "heavy_test": {
+    "test_name": "TEST 2: Carga Pesada (Prompt Extenso >12 KB)",
+    "nodo": "LOCAL_RTX",
+    "elapsed_seconds": 2.167975664138794,
+    "prompt_chars": 13856,
+    "prompt_tokens": 3118,
+    "completion_tokens": 200,
+    "tokens_per_second": 92.25195804005851,
+    "gpu_max_util": 100,
+    "gpu_avg_util": 67.4,
+    "gpu_vram_delta_mb": 4,
+    "gpu_max_vram_mb": 2490,
+    "gpu_max_pwr_w": 74.77,
+    "response_preview": "Aquí te presento 4 optimizaciones de alto rendimiento para el script de simulación masiva en Unity utilizando Unity DOTS, Jobs System y Burst Compiler:\n\n**1. Optimización 1: Utiliz"
+  }
+}

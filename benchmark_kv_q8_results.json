@@ -1,0 +1,88 @@
+{
+  "small": {
+    "name": "Small Prompt (51 caracteres)",
+    "baseline_tps": 41.24,
+    "mean_tps": 42.74,
+    "stdev_tps": 0.21,
+    "p50_tps": 42.73,
+    "cv_tps": 0.5,
+    "mean_ttft_ms": 36.72,
+    "regression_pct": -3.64,
+    "passed": true,
+    "runs": [
+      {
+        "ttft_ms": 32.08,
+        "total_time_s": 1.434,
+        "tokens": 60,
+        "tps": 42.81
+      },
+      {
+        "ttft_ms": 47.2,
+        "total_time_s": 1.442,
+        "tokens": 60,
+        "tps": 43.02
+      },
+      {
+        "ttft_ms": 31.26,
+        "total_time_s": 1.435,
+        "tokens": 60,
+        "tps": 42.73
+      },
+      {
+        "ttft_ms": 30.91,
+        "total_time_s": 1.445,
+        "tokens": 60,
+        "tps": 42.43
+      },
+      {
+        "ttft_ms": 42.16,
+        "total_time_s": 1.447,
+        "tokens": 60,
+        "tps": 42.72
+      }
+    ]
+  },
+  "medium": {
+    "name": "Medium Prompt (100 caracteres)",
+    "baseline_tps": 39.3,
+    "mean_tps": 42.66,
+    "stdev_tps": 0.19,
+    "p50_tps": 42.71,
+    "cv_tps": 0.44,
+    "mean_ttft_ms": 43.44,
+    "regression_pct": -8.55,
+    "passed": true,
+    "runs": [
+      {
+        "ttft_ms": 36.92,
+        "total_time_s": 1.905,
+        "tokens": 80,
+        "tps": 42.84
+      },
+      {
+        "ttft_ms": 47.8,
+        "total_time_s": 1.931,
+        "tokens": 80,
+        "tps": 42.48
+      },
+      {
+        "ttft_ms": 53.44,
+        "total_time_s": 1.921,
+        "tokens": 80,
+        "tps": 42.83
+      },
+      {
+        "ttft_ms": 40.02,
+        "total_time_s": 1.913,
+        "tokens": 80,
+        "tps": 42.71
+      },
+      {
+        "ttft_ms": 39.04,
+        "total_time_s": 1.923,
+        "tokens": 80,
+        "tps": 42.45
+      }
+    ]
+  }
+}

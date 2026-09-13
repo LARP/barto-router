@@ -1,0 +1,771 @@
+# PLAN DE IMPLEMENTACIÓN — VERSIÓN 5 (NODO DE IA LOCAL)
+
+## Nodo de IA Local en PC Secundario
+
+**Proyecto:** Arquitectura Experimental de Asistencia Inteligente para Optimización del Tiempo Humano
+**Componente:** Nodo local de IA en PC secundario
+**Estado:** PRERREGISTRO / PLAN PARA IMPLEMENTACIÓN
+**Revisión:** v5 — se elimina del alcance el laboratorio experimental Marley; el documento cubre exclusivamente el nodo de IA local. Conserva todas las políticas técnicas de revisiones anteriores (driver/GSP, PyTorch, VRAM, commit pineado).
+**Actualización v5.1 (13 sep 2026):** incorpora el **inventario real de discos verificado en Fase 0** (Crucial BX500 = Windows, Kingston SA400S37240G = Linux, Toshiba MQ01ABF032 = `/data`), el **estado verificado** de firmware/BitLocker/Fast Startup (§7.6) y la **validación aritmética del presupuesto de VRAM** (§8.3). CPU confirmada: A8 PRO-7600B.
+**Fecha:** 13 de septiembre de 2026
+
+---
+
+# 1. Objetivo
+
+Convertir el PC secundario en un **nodo Linux permanente de bajo costo**, conectado por LAN al PC principal, manteniendo inicialmente Windows mediante dual boot.
+
+El nodo tendrá una función:
+
+### A. Nodo auxiliar de IA
+
+- inferencia local de modelos pequeños;
+- `llama.cpp`;
+- API local mediante `llama-server`;
+- RAG y embeddings;
+- clasificación, extracción y resumen;
+- tareas repetitivas de bajo costo;
+- eventual integración con OpenCode y Antigravity.
+
+La arquitectura no pretende convertir el PC secundario en el computador principal de IA.
+
+Su función es ser:
+
+> **recurso auxiliar económico.**
+
+El PC principal (RTX 3050 / 6 GB) permanece como el recurso fuerte para las tareas que excedan la capacidad del nodo.
+
+---
+
+# 2. Hardware del nodo
+
+| Componente | Especificación |
+| --- | --- |
+| CPU | AMD A8 PRO-7600B (Kaveri), 4 núcleos / 2 módulos, 3.10 GHz |
+| RAM | 16 GB (reportado 14,9 GB usables) |
+| GPU | NVIDIA GeForce GT 1030 |
+| VRAM | 2 GB dedicada |
+| Arquitectura | NVIDIA Pascal |
+| Compute Capability | 6.1 |
+| GPU integrada | AMD Radeon R7 |
+| Placa base | MSI MS-7721 |
+| Sistema actual | Windows |
+| Sistema objetivo | Ubuntu Server 24.04 LTS + Windows dual boot |
+
+Comparación de contexto con el PC principal:
+
+```text
+PC PRINCIPAL                PC SECUNDARIO
+RTX 3050                    GT 1030
+Ampere                      Pascal
+6 GB VRAM                   2 GB VRAM
+```
+
+El PC principal absorbe las tareas complejas; el nodo opera dentro de su propio presupuesto de hardware, definido en la sección 2.1.
+
+---
+
+## 2.1 Limitaciones conocidas y expectativas realistas
+
+Dimensionamiento aprobado antes de comenzar. Estos límites **no son defectos del plan**: son el presupuesto de diseño.
+
+### VRAM (2 GB)
+
+- Techo realista: modelos de **1B–3B parámetros cuantizados (Q4_K_M o más agresivo)**.
+- Nada de modelos 7B o superiores, ni siquiera con offload parcial a CPU (la CPU no compensa).
+- El presupuesto de VRAM debe incluir: peso del modelo + KV cache + buffer de cómputo + reserva del backend gráfico (~0.3–0.5 GB).
+- Contexto objetivo: **2048–4096 tokens**, con KV cache cuantizado si es necesario.
+
+### CPU (AMD A8 PRO-7600B, Kaveri 2014, sin AVX2)
+
+- Floja incluso para estándares de inferencia por CPU.
+- Toda capa que se derive a CPU (offload parcial, embeddings, indexación RAG) será **notablemente lenta**.
+- Las tareas del nodo deberán pensarse como **batch/asíncronas**, no como chat interactivo fluido.
+
+### Expectativas de rendimiento (estimaciones a validar empíricamente)
+
+| Escenario | Estimación inicial | Uso viable |
+| --- | --- | --- |
+| ~1B Q4 en GPU (offload completo) | ~25–40 t/s | chat ligero, clasificación, extracción |
+| ~1B Q4 solo CPU | ~3–6 t/s | tareas batch/asíncronas |
+| 1.7B–3B Q4 híbrido CPU+GPU parcial | ~2–5 t/s | resumen/extracción sin urgencia |
+| Embeddings pequeños (bge-small, nomic-embed) en CPU | aceptable | RAG viable, indexación lenta |
+
+---
+
+# 3. Almacenamiento
+
+> **Inventario verificado (Fase 0):** el nodo tiene **tres discos**, no dos. El disco de Windows es un SSD **Crucial BX500 240 GB** (no estaba inventariado en revisiones previas). El Kingston de 240 GB queda **íntegramente** para Linux.
+
+## 3.0 SSD de Windows — Crucial BX500 240 GB
+
+Disco que aloja **Windows** (C:, arranque + sistema). **No se toca**: ni se formatea ni se reparticiona. Alberga la partición EFI/System, por lo que el bootloader de Ubuntu se instalará en esa EFI existente (ver secciones 9–10).
+
+## 3.1 SSD principal Linux — Kingston SA400S37240G 240 GB
+
+El **SSD Kingston de 240 GB** será la unidad principal de Linux.
+
+Uso:
+
+- Ubuntu Server;
+- aplicaciones;
+- `llama.cpp`;
+- servicios;
+- modelos activos;
+- embeddings activos;
+- cachés;
+- herramientas;
+- componentes que requieran acceso frecuente.
+
+Principio:
+
+> **SSD = sistema + trabajo activo.**
+
+## 3.2 HDD secundario — Toshiba MQ01ABF032
+
+**Toshiba MQ01ABF032** — HDD 2,5", 300 GB, 7 mm, almacenamiento secundario.
+
+Se montará como `/data`:
+
+```text
+/data
+├── models/
+├── datasets/
+├── rag/
+├── repositories/
+├── archives/
+└── local-backups/
+```
+
+Principio:
+
+> **Toshiba HDD = capacidad + almacenamiento histórico.**
+
+Los modelos utilizados frecuentemente permanecerán en el SSD. El Toshiba, al ser un HDD de 5400 rpm, no será ubicación preferente para modelos con cargas frecuentes.
+
+---
+
+# 4. Regla crítica de identificación de discos
+
+Antes de formatear o particionar cualquier unidad se identificará físicamente cada disco.
+
+No se asumirá que `/dev/sda`, `/dev/sdb`… corresponden siempre al mismo hardware.
+
+### Inventario verificado en el nodo (evidencia Fase 0)
+
+| Modelo | Tipo | Capacidad | Rol | Tabla actual |
+| --- | --- | --- | --- | --- |
+| Crucial BX500 (`CT240BX500SSD1`) | SSD SATA | 240 GB | **Windows** (C:, arranque + sistema) | GPT |
+| Kingston (`SA400S37240G`) | SSD SATA | 240 GB | **Linux** (`/`) | MBR → a GPT al instalar |
+| Toshiba (`MQ01ABF032`) | HDD SATA | 300 GB | **`/data`** | GPT (vacío, solo MSR) |
+
+Notas de identificación:
+
+- El Toshiba **MQ01ABF032** (no MQ01ABF030) está inicializado en **GPT** y **vacío** (solo la partición reservada MSR de 0.02 GB): no contiene datos que preservar.
+- El Kingston aparece en Windows como `D: RESPALDOS` (exFAT, MBR). **Debe vaciarse** antes de instalar Ubuntu: cualquier respaldo útil se moverá a otro medio.
+- El disco de Windows (`CT240BX500SSD1`) comparte prefijo de modelo con otros Crucial; identificarlo por su rol **arranque + sistema**, no por letra.
+
+Después de instalar Ubuntu:
+
+```bash
+lsblk
+sudo blkid
+```
+
+deberán identificar inequívocamente:
+
+- SSD Kingston 240 GB;
+- Toshiba MQ01ABF032;
+- disco de Windows;
+- partición EFI;
+- particiones Recovery/OEM.
+
+El Toshiba solo será formateado después de confirmar:
+
+```text
+Modelo: Toshiba MQ01ABF032
+Capacidad: aproximadamente 300 GB
+```
+
+Para `/etc/fstab` se utilizará **UUID**, no nombres `/dev/sdX`.
+
+---
+
+# 5. Arquitectura general
+
+```text
+                         PC PRINCIPAL
+                    RTX 3050 / 6 GB VRAM
+                     Antigravity + OpenCode
+                              │
+                              │ LAN
+                              ▼
+                    PC SECUNDARIO / NODO
+                    Ubuntu Server 24.04
+                              │
+                   ┌──────────┴──────────┐
+                   │                     │
+                   ▼                     ▼
+              llama.cpp              RAG/API
+                   │                     │
+                   └──────────┬──────────┘
+                              │
+                    ┌─────────┴─────────┐
+                    ▼                   ▼
+              Kingston SSD          Toshiba HDD
+                 240 GB                300 GB
+             sistema/activo        datos/histórico
+```
+
+---
+
+# 6. Estrategia de instalación
+
+Implementación incremental:
+
+> **Una capa → validación → evidencia → siguiente capa.**
+
+Orden:
+
+```text
+Backup
+  ↓
+Dual boot
+  ↓
+Ubuntu
+  ↓
+SSD
+  ↓
+Toshiba /data
+  ↓
+Red
+  ↓
+SSH
+  ↓
+NVIDIA (driver verificado y congelado)
+  ↓
+Vulkan
+  ↓
+llama.cpp
+  ↓
+modelo pequeño (preseleccionado y validado en VRAM)
+  ↓
+benchmarks
+  ↓
+API
+  ↓
+OpenCode / Antigravity
+  ↓
+RAG (embeddings vía llama.cpp GGUF)
+  ↓
+CUDA 12.8 opcional
+```
+
+Docker y Ollama quedan fuera del camino crítico inicial.
+
+---
+
+# 7. Fase 0 — Seguridad y preparación
+
+Antes de modificar particiones:
+
+### 7.1 Backup
+
+Realizar backup de todos los datos importantes de Windows.
+
+### 7.2 BitLocker
+
+Comprobar si Windows utiliza BitLocker/Device Encryption. Guardar la clave de recuperación. Suspender temporalmente el cifrado si corresponde.
+
+### 7.3 UEFI
+
+Comprobar con `msinfo32` que `BIOS Mode: UEFI`.
+
+### 7.4 Windows Fast Startup
+
+Desactivar **Fast Startup** antes del dual boot.
+
+### 7.5 Identificación de discos
+
+Identificar físicamente disco Windows (Crucial BX500), Kingston 240 GB y Toshiba 300 GB. No formatear todavía nada.
+
+### 7.6 Estado verificado (evidencia Fase 0 — 13 sep 2026)
+
+Diagnóstico read-only ejecutado sobre el nodo vía LAN:
+
+| Ítem | Resultado | Acción |
+| --- | --- | --- |
+| Firmware | UEFI | — |
+| Secure Boot | Desactivado | — |
+| BitLocker (C:, D:) | Off / FullyDecrypted | Nada que suspender |
+| Fast Startup (`HiberbootEnabled`) | **1 → 0 (desactivado el 13 sep 2026)** | Completado |
+| Discos | 3 Online/Healthy (Crucial, Kingston, Toshiba) | Ver §4 |
+| Toshiba `MQ01ABF032` | GPT, vacío (solo MSR) | Listo para `/data` (§11) |
+| Kingston `SA400S37240G` | MBR, `D: RESPALDOS` (NTFS, ~0,1 GB usado, solo `System Volume Information`) | Vacío; listo para instalar Linux |
+
+Único pendiente de Fase 0 antes de instalar: **backup de datos de Windows** (§7.1), si se considera necesario (Windows reside en el Crucial, que no se modifica; solo se reutiliza su EFI).
+
+**Fase 0 completada (13 sep 2026):** UEFI verificado, BitLocker off, Fast Startup desactivado, discos identificados y Kingston vacío.
+
+---
+
+# 8. Fase 0.5 — Selección previa de modelos y validación del presupuesto de VRAM
+
+**Antes de invertir tiempo en la instalación del stack de IA**, se decidirá de antemano qué modelos concretos (nombre + cuantización) correrá el nodo, y se validará aritméticamente que caben en 2 GB.
+
+### 8.1 Candidatos preseleccionados
+
+| Modelo | Cuantización | Peso GGUF aprox. | Contexto objetivo |
+| --- | --- | --- | --- |
+| Llama 3.2 1B Instruct | Q4_K_M | ~0.80 GB | 2048–4096 |
+| Qwen3 0.6B | Q4_K_M | ~0.45 GB | 4096 |
+| Qwen3 1.7B | Q4_K_M | ~1.10 GB | 2048 |
+| Qwen2.5 1.5B | Q4_K_M | ~1.00 GB | 2048–4096 |
+| SmolLM2 1.7B | Q4_K_M | ~1.05 GB | 2048 |
+
+Embeddings (vía llama.cpp, sin PyTorch):
+
+| Modelo | Peso aprox. | Nota |
+| --- | --- | --- |
+| bge-small-en-v1.5 (GGUF) | ~0.13 GB | muy ligero, CPU o GPU |
+| nomic-embed-text (GGUF) | ~0.27 GB | calidad superior, aún ligero |
+
+### 8.2 Regla de validación
+
+Un modelo es aceptable solo si:
+
+```text
+peso GGUF
++ KV cache estimado (contexto objetivo, q8_0)
++ buffer de cómputo (~0.2 GB)
++ reserva backend (~0.3–0.5 GB)
+≤ 2 GB
+```
+
+Si no cumple, se descarta o se reduce contexto/cuantización **antes** de descargar e instalar.
+
+### 8.3 Validación aritmética (Fase 0.5 — 13 sep 2026)
+
+Supuestos: KV cache `q8_0` ≈ 1,06 B por valor (`2 × n_layers × n_kv_heads × head_dim` por token); buffer de cómputo 0,20 GB; reserva de backend 0,35 GB (nodo headless).
+
+| Modelo | Peso Q4_K_M | Ctx | KV q8_0 | Buffer | Reserva | **Total** | ¿≤ 2 GB? |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Llama 3.2 1B | 0,80 | 4096 | 0,07 | 0,20 | 0,35 | **1,42** | ✅ holgado |
+| Qwen2.5 1.5B | 1,00 | 4096 | 0,06 | 0,20 | 0,35 | **1,61** | ✅ |
+| Qwen3 0.6B | 0,45 | 8192 | 0,48 | 0,20 | 0,35 | **1,48** | ✅ |
+| Qwen3 1.7B | 1,10 | 2048 | 0,12 | 0,20 | 0,35 | **1,77** | ✅ ajustado |
+| Qwen3 1.7B | 1,10 | 4096 | 0,24 | 0,20 | 0,35 | **1,89** | ⚠️ muy ajustado |
+| SmolLM2 1.7B | 1,05 | 2048 | 0,20 | 0,20 | 0,35 | **1,80** | ✅ ajustado |
+| SmolLM2 1.7B | 1,05 | 4096 | 0,41 | 0,20 | 0,35 | **2,01** | ❌ descartar a 4096 |
+
+**Decisión de shortlist (a confirmar empíricamente en Fase 10):**
+
+- **Primario:** Llama 3.2 1B Instruct Q4_K_M a 4096 — mayor margen y mayor velocidad esperada.
+- **Secundario (calidad):** Qwen2.5 1.5B Q4_K_M a 4096.
+- **Contexto largo:** Qwen3 0.6B Q4_K_M a 8192.
+- **SmolLM2 1.7B:** solo a 2048; **descartado a 4096** por presupuesto.
+- **Qwen3 1.7B:** admisible solo a 2048 (a 4096 queda al borde; no usar sin medir fragmentación real).
+
+Ningún candidato se descarga antes de que la Fase 10 confirme peso real del GGUF y VRAM medida.
+
+### 8.4 Decisión de cortafuegos
+
+- **Prohibido:** evaluar modelos >3B o 7B+ en este nodo.
+- Los modelos descartados por presupuesto no se reevalúan "por si acaso"; el PC principal/cloud cubre ese rango.
+
+---
+
+# 9. Fase 1 — Ubuntu Server
+
+**Ubuntu Server 24.04 LTS 64-bit**, instalado en el **SSD Kingston de 240 GB**. Windows permanecerá intacto.
+
+- No utilizar "Erase disk and install Ubuntu" si existe riesgo de seleccionar el disco de Windows.
+- La partición EFI existente podrá usarse para el bootloader de Ubuntu, pero **no debe formatearse ni eliminarse**.
+- Las particiones Recovery/OEM de Windows no se modificarán.
+
+---
+
+# 10. Fase 2 — Particionado del SSD
+
+```text
+SSD Kingston 240 GB
+
+EFI existente
+     └── bootloader Windows + Ubuntu
+
+Ubuntu
+     ├── /
+     └── swapfile
+```
+
+- No se crea inicialmente `/home` separado ni partición swap física.
+- Swapfile + posibilidad de añadir zram posteriormente.
+- La distribución definitiva dependerá del particionado real.
+
+---
+
+# 11. Fase 3 — Incorporación del Toshiba
+
+Con Ubuntu funcionando:
+
+```bash
+lsblk
+sudo blkid
+```
+
+Identificar el Toshiba MQ01ABF032 (~300 GB), luego: particionar si corresponde, crear sistema de archivos, montar en `/data`, configurar `/etc/fstab` por UUID, probar montaje automático y lectura/escritura.
+
+---
+
+# 12. Fase 4 — Red y SSH
+
+Ethernet preferente. OpenSSH instalado. Reserva DHCP en el router para IP estable. Firewall: SSH y API solo desde LAN; nada expuesto a Internet.
+
+---
+
+# 13. Fase 5 — NVIDIA GT 1030 y política de driver
+
+La GT 1030 es Pascal / CC 6.1 / 2 GB VRAM (chip GP108).
+
+```bash
+lspci | grep -i nvidia
+```
+
+### Matiz crítico verificado: módulo PROPIETARIO, no open
+
+La GT 1030 (GP108) **carece de GPU System Processor (GSP)**. Los módulos *open* del driver (`nvidia-open`, paquetes `nvidia-driver-XXX-open`) **no soportan esta tarjeta**: el módulo del kernel falla al cargar con:
+
+```text
+NVRM: ... is not supported by open nvidia.ko because it does not include
+NVRM: the required GPU System Processor (GSP).
+```
+
+Además, después de la rama 580 **el módulo propietario deja de existir** (las ramas 590+ son exclusivamente open/GSP), por lo que **580.xx propietario es efectivamente la última línea de drivers viable para esta GPU**.
+
+**Regla de diagnóstico:** un error GSP en `dmesg | grep NVRM` significa *flavor de módulo incorrecto*, **no** hardware defectuoso. No se descarta la tarjeta antes de verificar esto.
+
+### Política de driver
+
+1. **Restricción de rama:** driver de rama **≤580**.
+2. **Flavor obligatorio:** **propietario** (`nvidia-driver-580`, nunca `nvidia-driver-580-open`).
+3. **Verificación en el momento de la instalación:** confirmar la compatibilidad exacta **versión driver ↔ kernel de Ubuntu 24.04** vigente (cambia con actualizaciones HWE; no se asume una versión fijada hoy).
+4. **Secuencia de prueba:** instalar 580 propietario → validar con `nvidia-smi`. Si el módulo no carga, verificar `dmesg | grep NVRM`:
+
+- error GSP → instalar de nuevo verificando que el paquete no sea `-open`;
+- si 580.x propietario no está disponible o falla por otra causa → **fallback a 570.x** (570.124.04 reportado como funcional en GT 1030) y revalidar.
+
+5. **Congelación:** solo después de una versión validada:
+
+```bash
+sudo apt-mark hold <paquete-del-driver>
+```
+
+6. **Registro obligatorio:** GPU, **versión exacta del driver (no solo la rama)**, flavor del módulo, kernel, fecha — en el log de instalación del nodo.
+7. **Archivo local:** descargar y archivar desde el principio los `.deb` de **ambos** candidatos — 580 propietario y 570.124.04 — (y sus dependencias) en `/data/local-backups/drivers/`. No se archiva solo el ganador: si una futura actualización de kernel HWE rompe el 580, el rollback a 570.x no debe depender de que el repositorio lo siga ofreciendo.
+
+### Horizonte de soporte (referencia para planificación)
+
+NVIDIA pasó Maxwell/Pascal/Volta a **actualizaciones de seguridad trimestrales hasta octubre de 2028** (sin nuevas funciones ni correcciones de compatibilidad). Implicaciones aceptadas por el plan:
+
+- las ramas de driver desaparecerán eventualmente de los repositorios → por eso el archivo local del punto 7;
+- el nodo se diseña sabiendo que su plataforma gráfica tiene soporte finito, no indefinido.
+
+---
+
+# 14. Fase 6 — Ruta gráfica principal: Vulkan
+
+Debido al retiro del soporte de Pascal de los toolkits CUDA actuales:
+
+```text
+GT 1030 → Vulkan → llama.cpp
+```
+
+**Vulkan = backend principal inicial para inferencia local.**
+
+Ventajas: evita depender de CUDA 13, evita congelar inicialmente una toolchain CUDA legacy, mantiene compatibilidad con Pascal, reduce variables de instalación. Se valida Vulkan antes de continuar.
+
+---
+
+# 15. Fase 7 — CUDA 12.8 como ruta secundaria opcional
+
+CUDA no queda descartado; se mantiene como segunda ruta experimental:
+
+```text
+CUDA 12.8 + llama.cpp + CMAKE_CUDA_ARCHITECTURES=61
+```
+
+- Explícitamente **pineada**. No se utilizará CUDA 13 para compilar kernels Pascal.
+- Si se usa: registrar toolkit, driver, commit de llama.cpp, arquitectura, flags, modelo y configuración.
+
+Decisión inicial: Vulkan primero; CUDA 12.8 como comparación experimental opcional.
+
+---
+
+# 16. Fase 8 — Compatibilidad del CPU
+
+El AMD A8 PRO-7600B **no dispone de AVX2**. No se utilizarán ciegamente binarios precompilados para Haswell/AVX2.
+
+La build de `llama.cpp` deberá ser compatible con el A8 PRO-7600B: build genérica o compilada desde fuente con flags apropiados. Un `SIGILL` se tratará como incompatibilidad de instrucciones, no como fallo del modelo.
+
+---
+
+# 17. Fase 9 — llama.cpp
+
+Con driver + Vulkan + GPU + CPU validados, se instala `llama.cpp`.
+
+Primera estrategia:
+
+```text
+CPU/RAM → validación → offload GPU progresivo
+```
+
+El objetivo inicial no es maximizar velocidad, sino determinar:
+
+> **Qué modelos y configuraciones son realmente viables con 16 GB de RAM + 2 GB de VRAM.**
+
+### Pineado del commit desde el inicio
+
+Como `llama.cpp` se compila desde fuente (Fase 8 / D9), se aprovecha esa misma compilación para **fijar el commit exacto desde la primera build**, no solo para benchmarks:
+
+```bash
+git rev-parse HEAD   # registrar en el log de instalación
+```
+
+- El mismo commit se usa para el servicio (`llama-server`) y para toda medición posterior.
+- Cualquier cambio de commit se trata como cambio de versión del software: se registra, se justifica y se revalida.
+
+---
+
+# 18. Fase 10 — Modelos iniciales
+
+Se evaluarán **únicamente** los modelos preseleccionados y validados en la Fase 0.5. No se asumirá previamente cuál será el mejor.
+
+Se registrará:
+
+```text
+modelo | cuantización | tamaño | contexto | VRAM | RAM | tokens/s | latencia | temperatura | estabilidad
+```
+
+Para embeddings: bge-small y nomic-embed-text en GGUF (vía llama.cpp).
+
+---
+
+# 19. Fase 11 — Offload progresivo
+
+Se comenzará con ejecución CPU/RAM y después se probarán niveles de offload GPU con `-ngl`:
+
+```text
+CPU → CPU + poco offload → CPU + offload medio → mayor offload posible
+```
+
+También se evaluará KV cache cuantizado (`-ctk q8_0 -ctv q8_0`) cuando sea necesario para mantener el contexto dentro del presupuesto de 2 GB.
+
+---
+
+# 20. Fase 12 — Caracterización PCIe y térmica
+
+Como parte de la validación de estabilidad del nodo se registrará:
+
+- GPU, VRAM, driver, clocks, temperatura, throttling.
+- PCIe: generación, ancho de enlace (muchas GT 1030 usan **PCIe x4**, no x16 — afecta al offload parcial y a transferencias CPU↔GPU).
+- Si la tarjeta es pasiva, atención especial al throttling térmico. No se compararán benchmarks obtenidos bajo condiciones térmicas incompatibles.
+
+Estos datos alimentan el log de instalación y la elección definitiva de offload.
+
+---
+
+# 21. Fase 13 — API local
+
+Con llama.cpp validado:
+
+```text
+OpenCode / Antigravity → LAN → llama-server → llama.cpp → GT 1030
+```
+
+- `llama-server` como primera interfaz (API compatible con OpenAI).
+- API key + firewall LAN. Sin exposición a Internet.
+
+---
+
+# 22. Fase 14 — Integración con OpenCode y Antigravity
+
+El nodo recibirá tareas de bajo riesgo y bajo costo: clasificación, resumen, extracción, transformación, búsqueda, documentación, tareas batch, RAG. Lo que supere la capacidad del modelo escala al recurso fuerte.
+
+---
+
+# 23. Fase 15 — PyTorch y capa Python: política de versiones
+
+### Riesgo identificado
+
+Los wheels PyTorch con CUDA 12.8 (torch ≥2.7 en adelante) **eliminan el soporte de Pascal/Maxwell (sm_61 y anteriores)**. Bajo esas versiones, la GT 1030 falla con:
+
+```text
+no kernel image is available for execution on the device
+```
+
+Esto **no** afecta a llama.cpp compilado correctamente, pero sí a cualquier capa Python/PyTorch (sentence-transformers, pipelines de RAG, clasificadores).
+
+### Política adoptada
+
+**Ruta A — principal:** embeddings y clasificación **sin PyTorch**, vía llama.cpp con modelos GGUF (nomic-embed-text, bge-small). Sin dependencia de CUDA ni de versión de torch.
+
+**Ruta B — solo si se requiere transformers:** PyTorch **pineado ≤2.6 con wheels cu121/cu124** (últimos con soporte Pascal). Antes de usar:
+
+```python
+torch.cuda.get_arch_list()   # debe incluir arquitectura 6.x o PTX compatible
+```
+
+**Ruta C — alternativa CPU-only:** ONNX Runtime para clasificación/embeddings si se necesita el ecosistema Python. Funciona en cualquier CPU x86-64, sin dependencia de arquitectura GPU.
+
+### Prohibiciones
+
+- Prohibido instalar torch ≥2.7 con wheels cu128+ en este nodo.
+- Prohibido descubrir la incompatibilidad "a mitad de la fase de RAG": la versión se fija **en los requisitos antes de implementar RAG**.
+
+### Regla de diagnóstico
+
+El error `no kernel image is available for execution on the device` se interpreta como **wheel incompatible con Pascal**, no como bug del modelo ni del código. Respuesta: rollback a la versión pineada.
+
+---
+
+# 24. Fase 16 — RAG
+
+RAG queda fuera del camino crítico. Solo se implementa tras validar la inferencia local.
+
+Arquitectura:
+
+```text
+Documentos → Embeddings (llama.cpp GGUF) → Vector DB → Retriever → LLM
+```
+
+- Embeddings vía Ruta A (sin PyTorch) por defecto.
+- Vector DB: ChromaDB o Qdrant (evaluación posterior).
+- Contenido histórico en `/data` (Toshiba); componentes activos en SSD.
+- Recordatorio de dimensionamiento: la indexación y el retrieval serán CPU-bound y lentos; RAG del nodo es para corpus pequeños/medianos y consultas batch.
+
+---
+
+# 25. Fase 17 — Docker y Ollama
+
+Fuera de la primera implementación. Orden: llama.cpp nativo → validación → API → integración → solo si existe necesidad: Docker / Ollama. No se usa Ollama como dependencia inicial (restricciones de soporte Pascal). Docker solo si aporta ventaja concreta.
+
+---
+
+# 26. Criterios de éxito
+
+## Nivel 1 — Sistema
+
+PASS: Ubuntu arranca; Windows continúa arrancando; Kingston funciona; Toshiba funciona; `/data` monta automáticamente; SSH funciona.
+
+## Nivel 2 — GPU
+
+PASS: GT1030 detectada; driver **propietario** de rama ≤580 (nunca `-open`), versión exacta verificada contra kernel y congelada; `nvidia-smi` funcional; Vulkan funcional; temperatura estable.
+
+## Nivel 3 — IA
+
+PASS: llama.cpp funciona; modelo preseleccionado (validado en presupuesto VRAM) ejecuta; VRAM/RAM medibles; CPU compatible (sin `SIGILL`); sistema estable.
+
+## Nivel 4 — API
+
+PASS: `llama-server` funciona; API accesible desde LAN; autenticación configurada; firewall activo.
+
+## Nivel 5 — Integración
+
+PASS: OpenCode/Antigravity puede enviar una tarea; nodo procesa; resultado vuelve; existe fallback.
+
+## Nivel 6 — RAG
+
+PASS: embeddings generados vía llama.cpp GGUF (Ruta A) o PyTorch pineado compatible (Ruta B/C); sin error `no kernel image`; corpus de prueba indexado y consultable.
+
+---
+
+# 27. Arquitectura económica final
+
+> **Utilizar el recurso más barato que pueda resolver correctamente la tarea.**
+
+```text
+Tarea simple/repetitiva/pequeña/RAG → Nodo local
+Tarea compleja → PC principal / Cloud
+Tarea de alto riesgo → Modelo fuerte + revisión humana
+```
+
+El nodo no necesita competir en velocidad. Su valor es absorber tareas que no justifican recursos más caros.
+
+---
+
+# 28. Orden definitivo de implementación
+
+Numeración **idéntica a la del cuerpo del documento** (Fase N = sección "Fase N").
+
+```text
+FASE 0    Backup + BitLocker + Fast Startup + UEFI
+FASE 0.5  Selección previa de modelos + validación aritmética de VRAM
+FASE 1    Ubuntu Server en Kingston 240 GB
+FASE 2    Verificación dual boot
+FASE 3    Identificación + montaje Toshiba 300 GB
+FASE 4    LAN + SSH + firewall
+FASE 5    GT1030 + driver PROPIETARIO rama ≤580 (fallback 570.x si falla), verificado ↔ kernel, congelado
+FASE 6    Vulkan (validación del backend principal)
+FASE 7    CUDA 12.8 — ruta secundaria OPCIONAL (política pineada aquí; ejecución solo tras validar Fases 6–9)
+FASE 8    Compatibilidad CPU (build de llama.cpp sin AVX2)
+FASE 9    llama.cpp (commit exacto pineado desde la primera build)
+FASE 10   Modelos preseleccionados (según Fase 0.5)
+FASE 11   CPU → offload progresivo
+FASE 12   PCIe + temperatura + estabilidad
+FASE 13   llama-server (API local)
+FASE 14   OpenCode / Antigravity
+FASE 15   PyTorch pineado en requirements (si se usa) / ONNX Runtime
+FASE 16   RAG (embeddings vía llama.cpp GGUF)
+FASE 17   Docker / Ollama — fuera del camino crítico, solo si se justifica
+```
+
+---
+
+# 29. Decisiones congeladas
+
+| ID | Decisión |
+| --- | --- |
+| D1 | Kingston 240 GB = SSD principal de Linux |
+| D2 | Toshiba MQ01ABF032 300 GB = `/data` secundario |
+| D3 | Ubuntu Server 24.04 LTS |
+| D4 | llama.cpp = primer runtime LLM |
+| D5 | Vulkan = backend inicial de la GT1030 |
+| D6 | CUDA 13 no se utilizará para compilar kernels Pascal |
+| D7 | CUDA 12.8 = ruta secundaria, explícitamente pineada |
+| D8 | Driver NVIDIA: **rama ≤580 y flavor propietario (nunca `-open`)**, verificado contra el kernel vigente, con fallback a 570.x si falla, y congelado con `apt-mark hold` |
+| D9 | Build de llama.cpp compatible con A8 PRO-7600B, sin asumir AVX2 |
+| D10 | Docker y Ollama fuera del camino crítico inicial |
+| D11 | PCIe y temperatura registradas como validación de estabilidad del nodo |
+| D12 | Embeddings/clasificación vía llama.cpp GGUF (sin PyTorch) = ruta principal |
+| D13 | PyTorch solo pineado ≤2.6 cu121/cu124 si se usa; prohibido ≥2.7 cu128; ONNX Runtime = alternativa CPU |
+| D14 | Modelos limitados a 1B–3B Q4_K_M validados aritméticamente contra 2 GB antes de instalar; contexto objetivo 2048–4096 |
+| D15 | El valor del nodo es la absorción económica de tareas simples/repetitivas; el PC principal cubre lo que exceda al nodo |
+| D16 | Commit exacto de llama.cpp pineado desde la primera compilación, usado por el servicio y por todas las mediciones |
+| D17 | `.deb` de AMBOS candidatos de driver (580 propietario y 570.124.04) archivados desde el principio en `/data/local-backups/drivers/`; soporte Pascal = seguridad trimestral hasta octubre de 2028 |
+
+---
+
+# 30. Estado final
+
+**PLAN APROBADO — V5: NODO DE IA LOCAL (SIN LABORATORIO MARLEY)**
+
+Políticas técnicas vigentes consolidadas:
+
+1. Vulkan como ruta principal para Pascal.
+2. CUDA 12.8 pineado como alternativa experimental.
+3. Driver: rama ≤580 **propietario** (la GT 1030 no tiene GSP; los módulos open no la soportan), verificado contra el kernel vigente, con fallback a 570.x y congelado con `apt-mark hold`.
+4. Build de llama.cpp compatible con A8 PRO-7600B (sin AVX2) y **commit exacto pineado desde la primera build**.
+5. Registro de PCIe y condiciones térmicas como validación de estabilidad.
+6. RAG, Docker y Ollama desplazados fuera del camino crítico inicial.
+7. Política PyTorch: embeddings sin PyTorch vía llama.cpp GGUF; torch pineado ≤2.6 cu121/cu124 si se requiere; ONNX Runtime como alternativa CPU; error `no kernel image` diagnosticado como wheel incompatible.
+8. Validación aritmética previa del presupuesto de VRAM (Fase 0.5) con modelos y contextos preseleccionados.
+9. Expectativas de rendimiento dimensionadas explícitamente (sección 2.1).
+10. Rol del nodo: absorción económica de tareas simples/repetitivas; escalado de lo complejo al PC principal o cloud.
+11. **Cambio de alcance v5: eliminado el laboratorio experimental Marley (GT1030-0 → GT1030-3). Este documento cubre exclusivamente el nodo de IA local.**
+12. Archivo dual de drivers (ambos candidatos) y numeración de fases unificada.
+
+La implementación continuará bajo el principio:
+
+> **Una capa → validación → evidencia → siguiente capa.**
+
+No se realizarán cambios destructivos en discos hasta completar la Fase 0.
