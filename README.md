@@ -674,7 +674,11 @@ El objetivo de **v0.4** ha sido completado exitosamente mediante:
  
  **Estado actual: sistema de inferencia adaptativa distribuida formalmente calibrado y validado.**
  
- **Próximo objetivo: despliegue de KV Cache Q8 en el nodo secundario y evaluación interactiva con Unity.**
+  **Próximo objetivo: despliegue de KV Cache Q8 en el nodo secundario y evaluación interactiva con Unity.**
+
+## Ruta del experimento v0.5 (presupuesto seguro de VRAM)
+
+Ver protocolo versionado en [RUTA_EXPERIMENTO.md](RUTA_EXPERIMENTO.md) (derivado de [Plan experimental.md](Plan%20experimental.md), base `v0.4-stable`): F0 baseline B=0 → F1 curva B∈{0.5..3GB} → F2 fallo forzado → F3 liberación bajo presión → F4 KV f16 vs q8_0. Resultados en `resultados/`.
 
 ---
 
