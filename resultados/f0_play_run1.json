@@ -1,0 +1,13 @@
+{
+  "timestamp": "2026-09-13 20:56:41",
+  "samples_count": 27,
+  "gpu_util_mean": 32.4,
+  "gpu_util_max": 59,
+  "vram_used_max_mb": 1854,
+  "vram_free_min_mb": 4149,
+  "vram_free_p05_mb": 4149,
+  "vram_jitter_mb": 22,
+  "recommended_safety_margin_mb": 1500,
+  "safe_budget_mb": 2649,
+  "can_run_local_safely": true
+}
