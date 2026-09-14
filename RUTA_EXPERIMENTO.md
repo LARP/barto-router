@@ -41,7 +41,7 @@
 ## Estado
 - [x] Checkpoint `v0.4-stable`
 - [x] F0 baseline — RE-MEDIDO en Play 2026-09-13: N=3, VRAM libre min 4153±3 MB (CV 0.07%), GPU 33.5%, presupuesto seguro ~2653 MB. Supera al F0-editor (4211 MB); usar este como baseline oficial. Ver `resultados/f0_play_baseline.json`.
-- [ ] F1 curva
+- [x] F1 curva — REPETIDA en Play 2026-09-13: B≈1.2GB (ctx8192) libre min 2955 MB, GPU 33.4%, presupuesto 1455 MB (SÍ local, 0.62s/48tok); B≈2.4GB (doble instancia) libre min 1767 MB, GPU 32.2%, presupuesto ~267 MB (NO local). Rodilla confirmada en Play. Ver `resultados/f1_play_*`.
 - [ ] F2 fallo
 - [ ] F3 liberación
 - [ ] F4 KV q8
