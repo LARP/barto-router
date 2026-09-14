@@ -2,7 +2,7 @@
 
 **Proyecto:** Arquitectura Experimental de Asistencia Inteligente para Optimización del Tiempo Humano
 **Estado:** SUPERSEDED (14 sep 2026) — archivado sin ejecutar. Ver §14.
-**Versión:** 0.2.3 — marca de superseded + criterio de reactivación de doble gate (E0 + E0.5) sobre la 0.2.2
+**Versión:** 0.2.4 — registra ejecución de gates E0 (verde) y E0.5 (rojo) sobre la 0.2.3
 **Fecha:** 13 de septiembre de 2026
 
 ---
@@ -266,3 +266,24 @@ Gate E0.5 (nodo débil, barato, sin recompilar RPC):
 
 Regla: el plan solo se reabre con evidencia nueva de cambio en **ambas** condiciones
 (red **y** hardware del nodo débil), no solo en una.
+
+### 14.1 Ejecución de gates (14 sep 2026) — E0 verde, E0.5 rojo, plan cerrado
+
+**Gate E0 (red): VERDE.** `iperf3 -c 192.168.100.5 -t 10` nodo→principal: **939 Mbits/sec**
+sostenidos (1,09 GB, retr aceptables). Corrige el supuesto de 100 Mbps del informe §4.3:
+la red dejó de ser el cuello de botella dominante.
+
+**Gate E0.5 (nodo débil): ROJO.** `llama-bench` 1B Q4_K_M pp128/tg16, sin recompilar RPC:
+
+| Host | tg (t/s) | ms/token | ms/capa (÷16) |
+| --- | --- | --- | --- |
+| GT 1030 Vulkan (ngl99) | 44,43 | 22,5 | **~1,41** |
+| RTX 3050 CUDA (ngl99) | 157,46 | 6,35 | **~0,40** |
+| A8 CPU (ngl0, ref) | 7,82 | 127,9 | ~8,0 |
+
+Ratio GT:RTX ≈ **3,5× por capa**. Proyección E6 (32 capas, split 3:1):
+`24×0,40 + 8×1,41 + red ≈ 21 ms/token`, con el 25% de capas en la GT consumiendo
+el **54% del tiempo**. El cuello se trasladó de la red a R6 con el mismo veredicto;
+frente a CPU offload (orden de 4–8 t/s) no hay margen que justifique builds + descarga.
+
+**Cierre:** ambos gates ejecutados, E0.5 rojo. No se procede a E1–E5.
