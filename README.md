@@ -542,7 +542,8 @@ El plan de evolución técnica ha sido formalizado y auditado en el [INFORME_TEC
 #### Fase I: Diagnóstico y Regularización Estadística (Etapas 1 a 5)
 
 - [x] **Etapa 1 — Medición de VRAM Segura bajo Carga Interactiva:** *(Completada)*
-  * Presupuesto seguro determinado: 2955 MB libres con margen de 1500 MB (`unity_interactive_measurement.json`); rama de abandono 7.3-A no activada.
+  * Baseline ligero (`unity_interactive_measurement.json`, 19:38): presupuesto seguro 2955 MB, margen 1500 → local oportunista viable.
+  * Estación cargada (`unity_interactive_measurement_loaded.json`, 21:00): VRAM usada 4245 MB, presupuesto 258 MB → `can_run_local_safely=false`, el filtro duro deriva a remoto. Ambas ramas del filtro evidenciadas; rama de abandono 7.3-A no activada (el presupuesto no es ~0 en condiciones representativas).
 - [x] **Etapa 2 — Aislamiento del Overhead de TTFT (Hipótesis H-1):** *(Completada)*
   * Descomposición completada: se identificó que el socket TCP toma ~10 ms y el handshake HTTP es mínimo; el overhead de 1,9s del benchmark previo se debía a un bucle de acumulación sincrónica antes de entregar el primer token.
   * Solución implementada: true streaming chunk-by-chunk en `router.py`, reduciendo el TTFT del router de ~280 ms a **38–54 ms** (nodo secundario) y **12–30 ms** (local caliente).
