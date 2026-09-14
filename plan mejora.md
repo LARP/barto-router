@@ -1,8 +1,8 @@
 # PLAN MAESTRO — Inferencia Distribuida GPU por LAN (RPC)
 
 **Proyecto:** Arquitectura Experimental de Asistencia Inteligente para Optimización del Tiempo Humano
-**Estado:** EXPERIMENTO TÉCNICO DIRECTO (ya no investigación sobre existencia)
-**Versión:** 0.2.2 — corrige §9 (ejecutable `ggml-rpc-server`, regla llama-cli primero) sobre la 0.2.1
+**Estado:** SUPERSEDED (14 sep 2026) — archivado sin ejecutar. Ver §14.
+**Versión:** 0.2.3 — marca de superseded + criterio de reactivación de doble gate (E0 + E0.5) sobre la 0.2.2
 **Fecha:** 13 de septiembre de 2026
 
 ---
@@ -236,4 +236,33 @@ Aunque la infraestructura RPC ya existe y está probada upstream, mantener este 
 4. Ejecutar E2–E5 en una sesión; registrar tabla de métricas.
 5. Solo si E5 pasa: ejecutar E6–E7 y emitir veredicto RPC.
 
-**Decisión vigente:** GO, condicionado solo a E0.
+**Decisión vigente:** NO-GO al flujo E0–E8 completo (14 sep 2026). Repetir E0–E5 sin cambio en las
+condiciones de contorno no genera información nueva: es re-medición de un resultado ya cerrado
+con evidencia (INFORME_TECNICO_OFICIAL_v0.4 §3.2: RPC 9,6 t/s vs CPU offload 62,3 t/s, brecha 6,5×,
+no margen ambiguo). Ver §14.
+
+## 14. Archivo como superseded y criterio de reactivación (14 sep 2026)
+
+Este plan queda archivado como *superseded* por la evidencia de descarte (§3.2 del informe v0.4)
+más la validación de la ruta por routing entre backends independientes (Anexo B: F2/F3/E10).
+No se invierte en builds con `-DGGML_RPC=ON` ni en la descarga del modelo decisivo (§7)
+mientras no haya evidencia nueva de cambio en las condiciones de contorno.
+
+La reactivación exige **dos gates baratos, en orden, no uno solo**. Pasar el gate de red
+no basta: la GT 1030 es 10–20× más lenta por diseño de hardware (R6, abierto), no por red.
+Con red rápida el limitante puede simplemente trasladarse de §4.3 a R6 con el mismo veredicto.
+
+```text
+Gate E0 (red):   iperf3 entre ambos PCs. ¿≥ 1 Gbps real?
+  └─ NO  → plan sigue archivado. Fin.
+  └─ SÍ  → Gate E0.5 (nodo débil), NO E1–E5 directos.
+
+Gate E0.5 (nodo débil, barato, sin recompilar RPC):
+  Fijar UNA sola capa de prueba en la GT 1030 (build actual, sin distribuir el resto)
+  y medir su tiempo aislado con la red ya rápida.
+  └─ La capa aislada ya domina el tiempo total  → R6 mata el plan. Fin, sin build completo.
+  └─ La capa aislada no domina               → recién entonces E1–E5.
+```
+
+Regla: el plan solo se reabre con evidencia nueva de cambio en **ambas** condiciones
+(red **y** hardware del nodo débil), no solo en una.
