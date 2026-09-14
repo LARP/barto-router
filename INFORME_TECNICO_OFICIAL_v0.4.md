@@ -355,4 +355,59 @@ Se informa además que el plan contempla dos salidas anticipadas objetivadas (se
 
 ---
 
-*Informe elaborado por el equipo de análisis técnico sobre la base de la documentación del repositorio `LARP/barto-router` (v0.2), los resultados de `benchmark_v02_results.json` y el código de `policy.py`. Versión v0.4 revisada con incorporación de revisión externa.*
+## Anexo B — Evidencia de validación Etapas 9 y 10 (14 sep 2026)
+
+Metodología: router sombra en puertos 19001/19002 (mismo `ModularRouterHandler` productivo) para inyección de fallos sin tocar el router real (:9000). E10 contra router real. Todos los casos bajo criterio §7.1 (recuperación < 10 s, sin pérdida de peticiones).
+
+### B.1 Etapa 9 — F2 Fallo reactivo (NODO cae tras decidir)
+
+NODO_SECUNDARIO ONLINE apuntando a puerto muerto (`127.0.0.1:59999`); LOCAL_RTX real (`127.0.0.1:8081`). Script: `test_f2_fallo_forzado.py`.
+
+| Métrica | Resultado |
+| --- | --- |
+| `X-Decision-Backend` | `NODO_SECUNDARIO` |
+| `X-Execution-Backend` | `LOCAL_RTX` |
+| `X-Fallback` | `true` |
+| Tiempo total | **2,37 s** (< 10 s) |
+| Status / tokens | 200, 3 tokens |
+
+Veredicto: **PASS.** El router detectó `urlopen error 10061`, activó fallback a LOCAL_RTX y respondió sin pérdida. El sobrecosto (~2 s) corresponde al timeout de conexión TCP rechazada.
+
+### B.2 Etapa 9 — F3 Fallback preventivo (nodo OFFLINE al decidir)
+
+NODO_SECUNDARIO marcado OFFLINE; decisión directa sin intento de conexión. Script: `test_f3_preventivo.py`. Reproducibilidad N=3.
+
+| Corrida | Tiempo | Decisión → Ejecución | X-Fallback |
+| --- | --- | --- | --- |
+| 1 | 0,33 s | LOCAL_RTX → LOCAL_RTX | false |
+| 2 | 0,14 s | LOCAL_RTX → LOCAL_RTX | false |
+| 3 | 0,14 s | LOCAL_RTX → LOCAL_RTX | false |
+
+Media ~0,20 s. Corrida 1 más lenta por warmup del backend local; 2–3 estables en 0,14 s. Veredicto: **PASS 3/3.** Contraste F2/F3 confirma los dos caminos del informe: reactivo (2,37 s, con timeout) vs. preventivo (0,14–0,33 s, sin conexión).
+
+Nota operativa: la rama preventiva retorna antes del detector de `unity.exe`, del filtro de VRAM y del modelo de costo (`policy.py:decide()`); todo el tráfico cae sobre la RTX 3050. Ensayos F2/F3 con Unity fuera de Play. El caso combinado (nodo caído + Unity en Play) queda como experimento separado con presupuesto VRAM de Etapa 1.
+
+### B.3 Etapa 10 — Barrido de concurrencia 1/3/5/10/20
+
+Contra router real :9000, `max_tokens=15`, timeout 120 s. Script: `test_e10_sweep.py`. Resultado persistido en `concurrency_sweep_v04.json`.
+
+| Nivel | Total | p50 | p95 | máx | Éxito |
+| --- | --- | --- | --- | --- | --- |
+| 1× | 3,55 s | 3,55 s | 3,55 s | 3,55 s | 1/1 |
+| 3× | 1,58 s | 1,01 s | 1,58 s | 1,58 s | 3/3 |
+| 5× | 2,75 s | 1,65 s | 2,75 s | 2,75 s | 5/5 |
+| 10× | 5,67 s | 3,11 s | 5,66 s | 5,66 s | 10/10 |
+| 20× | 10,88 s | 5,84 s | 10,87 s | 10,87 s | 20/20 |
+
+Veredicto: **PASS (39/39, 100 %).** Sin colapsos hasta 20×; degradación lineal de latencia con la concurrencia. Sin backpressure explícito: el router acepta todo y la cola crece; a 20× el p95 (10,87 s) roza el SLA. **Límite operativo recomendado: ≤ 10 concurrentes** (p95 5,66 s con margen). El 1× lento (3,55 s) corresponde a servidor frío; con servidor caliente el p50 baja a ~1 s (nivel 3×).
+
+### B.4 Estado de criterios §7.1
+
+| Criterio | Resultado |
+| --- | --- |
+| Etapa 9 — Recuperación < 10 s en todos los casos de inyección | **Cumplido** (F2: 2,37 s; F3: 0,14–0,33 s) |
+| Etapa 10 — Perfil de degradación documentado; límites y backpressure definidos | **Cumplido** (límite ≤ 10; backpressure: pendiente de implementación, documentado como hallazgo) |
+
+---
+
+*Informe elaborado por el equipo de análisis técnico sobre la base de la documentación del repositorio `LARP/barto-router` (v0.2), los resultados de `benchmark_v02_results.json` y el código de `policy.py`. Versión v0.4 revisada con incorporación de revisión externa. Anexo B agregado el 14 sep 2026 con evidencia de validación Etapas 9–10.*

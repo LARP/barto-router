@@ -1,14 +1,37 @@
 {
   "1": {
-    "elapsed_s": 0.59,
-    "success_rate": "1/1"
+    "elapsed_s": 3.55,
+    "success_rate": "1/1",
+    "lat_p50_s": 3.55,
+    "lat_p95_s": 3.55,
+    "lat_max_s": 3.55
   },
   "3": {
-    "elapsed_s": 1.59,
-    "success_rate": "3/3"
+    "elapsed_s": 1.58,
+    "success_rate": "3/3",
+    "lat_p50_s": 1.01,
+    "lat_p95_s": 1.58,
+    "lat_max_s": 1.58
   },
   "5": {
-    "elapsed_s": 2.82,
-    "success_rate": "5/5"
+    "elapsed_s": 2.75,
+    "success_rate": "5/5",
+    "lat_p50_s": 1.65,
+    "lat_p95_s": 2.75,
+    "lat_max_s": 2.75
+  },
+  "10": {
+    "elapsed_s": 5.67,
+    "success_rate": "10/10",
+    "lat_p50_s": 3.11,
+    "lat_p95_s": 5.66,
+    "lat_max_s": 5.66
+  },
+  "20": {
+    "elapsed_s": 10.88,
+    "success_rate": "20/20",
+    "lat_p50_s": 5.84,
+    "lat_p95_s": 10.87,
+    "lat_max_s": 10.87
   }
 }
