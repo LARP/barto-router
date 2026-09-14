@@ -54,8 +54,8 @@ El proyecto cuenta con:
 - telemetría estructurada persistente por petición (`telemetry.py` / `telemetry.jsonl`);
 - monitor proactivo de salud y latencia en segundo plano (`health.py`);
 - suite de benchmark estadístico regularizado ($N=5$ + warmup descartado) con $CV < 5\%$;
-- resiliencia y fallback transparente con tiempo de recuperación menor a 1 segundo (<10s SLA);
-- pruebas de concurrencia masiva (1x, 3x, 5x) al 100% de éxito.
+- resiliencia y fallback validado en dos caminos: reactivo 2,37 s / preventivo 0,14–0,33 s (<10s SLA);
+- pruebas de concurrencia a escala 1x–20x al 100% de éxito con percentiles (límite operativo ≤10).
 
 ---
 
@@ -77,24 +77,23 @@ Funcionalidad ejecutada y medida bajo las condiciones experimentales descritas:
 - routing oportunista validado (protege la estación en uso interactivo);
 - suite de benchmark reproducible con registro de TTFT y throughput;
 - ejecución concurrente de solicitudes paralelas;
+- KV cache cuantizado Q8_0 en GT 1030 (+8.5% TPS, 60 MB VRAM liberados);
+- detección proactiva de procesos gráficos pesados (`Unity.exe`, `UnrealEditor.exe`) adaptando el factor de protección dinámicamente;
+- conmutación dinámica multi-modelo en caliente (Llama 3.2 1B vs. Qwen 2.5 1.5B en ~8s, <1.1 GB VRAM);
+- servidor de embeddings nativo permanente en GT 1030 (`bge-small-en-v1.5-q8_0` en `:8082` / proxy `:9000/v1/embeddings`, latencia ~95-104 ms, 384 dims);
 - prueba de inferencia distribuida mediante RPC (descartada por cuello de botella de red).
 
 ## EXPERIMENTAL
 
 Funcionalidades o mecanismos en fase de prueba y optimización:
 
-- políticas avanzadas basadas en umbrales de coste y latencia estimada;
-- conmutación dinámica multi-modelo (Llama 3.2 1B vs. Qwen 2.5 1.5B);
-- integración de hooks con el ciclo de vida del editor Unity;
-- persistencia de métricas de telemetría a largo plazo.
+- persistencia de métricas de telemetría a largo plazo;
+- pipelines de RAG y vector database local (ChromaDB / Qdrant).
 
 ## FUTURO
 
 Líneas que no forman parte todavía de la capacidad validada del proyecto:
 
-- detección automática de procesos como `Unity.exe`;
-- KV cache cuantizado;
-- RAG local;
 - migración a Gigabit;
 - nuevas estrategias de routing;
 - ampliación de modelos y backends.
@@ -542,9 +541,8 @@ El plan de evolución técnica ha sido formalizado y auditado en el [INFORME_TEC
 
 #### Fase I: Diagnóstico y Regularización Estadística (Etapas 1 a 5)
 
-- [ ] **Etapa 1 — Medición de VRAM Segura bajo Carga Interactiva (Prioridad Máxima):**
-  * Determinar el presupuesto dinámico de VRAM que puede utilizar Barto en el PC principal sin alterar la varianza de frame-time ni la latencia de input en Unity (según protocolo de la Sección 6 del informe).
-  * *Criterio de salida 7.3-A:* Si el presupuesto seguro es ~0 MiB bajo carga, se documenta el abandono de la inferencia local oportunista y se orienta el router exclusivamente al nodo remoto.
+- [x] **Etapa 1 — Medición de VRAM Segura bajo Carga Interactiva:** *(Completada)*
+  * Presupuesto seguro determinado: 2955 MB libres con margen de 1500 MB (`unity_interactive_measurement.json`); rama de abandono 7.3-A no activada.
 - [x] **Etapa 2 — Aislamiento del Overhead de TTFT (Hipótesis H-1):** *(Completada)*
   * Descomposición completada: se identificó que el socket TCP toma ~10 ms y el handshake HTTP es mínimo; el overhead de 1,9s del benchmark previo se debía a un bucle de acumulación sincrónica antes de entregar el primer token.
   * Solución implementada: true streaming chunk-by-chunk en `router.py`, reduciendo el TTFT del router de ~280 ms a **38–54 ms** (nodo secundario) y **12–30 ms** (local caliente).
@@ -556,8 +554,8 @@ El plan de evolución técnica ha sido formalizado y auditado en el [INFORME_TEC
     - **Large Prompt:** Warmup 32,14 s (GT 1030); Corridas regulares: p50 4,18 s con despacho híbrido. En la corrida 3, el router derivó oportunistamente a `LOCAL_RTX` completando en 1,68 s a 89,36 tok/s.
     - **Concurrencia (3 threads):** 100% de éxito en 3 rondas consecutivas ($3,13 \pm 0,32$ s promedio).
   * *Validación Criterio 7.3-B:* Superado con éxito. El entorno es medible y altamente reproducible (CV < 5% en tiempos de ejecución).
-- [ ] **Etapa 4 — Evaluación de KV Cache Cuantizado (Q8 en GT 1030):**
-  * Requiere reinicio físico/SSH del servicio en Ubuntu Server para añadir `--cache-type-k q8_0 --cache-type-v q8_0` (criterio de regresión <5%).
+- [x] **Etapa 4 — Evaluación de KV Cache Cuantizado (Q8 en GT 1030):** *(Completada)*
+  * Desplegado `--cache-type-k q8_0 --cache-type-v q8_0` en GT 1030: +3,6% a +8,5% TPS sin regresión ($CV < 0,5\%$), 60 MiB VRAM liberados (`benchmark_kv_q8_results.json`).
 - [x] **Etapa 5 — Calibración Empírica de Throughput, Latencia y Distribución de Error:** *(Completada)*
   * Análisis offline de `telemetry.jsonl` y `benchmark_v03_results.json` ejecutado en `calibrate_telemetry.py`.
   * Generado `calibration_params.json`: TPS Remoto p50 = 42,24 tok/s, TPS Local = 89,36 tok/s, LAN = 2,0 ms, P90 error estimación tokens = 318%, $PROTECTION\_FACTOR = 4,182$.
@@ -569,10 +567,16 @@ El plan de evolución técnica ha sido formalizado y auditado en el [INFORME_TEC
   * Filtro duro en `CostEstimationPolicy`: si $\text{VRAM\_libre} - \text{safety\_margin} < \text{VRAM\_modelo}$, se deriva obligatoriamente a remoto. Validado en `test_stages_suite.py`.
 - [x] **Etapa 8 — Pruebas de Liberación y Recálculo de Recursos:** *(Completada)*
   * Verificado en `test_stages_suite.py`: 0 MB de fuga o retención anómala de VRAM tras inferencias locales.
-- [x] **Etapa 9 — Inyección de Fallos y Validación de Fallback:** *(Completada)*
-  * Verificado en `test_stages_suite.py`: degradación y recuperación completadas en 0,71 s (< 10 s SLA Criterio 7.1).
-- [x] **Etapa 10 — Concurrencia a Escala y Evaluación Final:** *(Completada)*
-  * Barrido de 1x, 3x y 5x peticiones concurrentes completado con 100% de éxito en todos los niveles (1x: 0,59s, 3x: 1,59s, 5x: 2,82s) persistido en `concurrency_sweep_v04.json`.
+- [x] **Etapa 9 — Inyección de Fallos y Validación de Fallback:** *(Completada — validación final 14 sep 2026, Anexo B del informe)*
+  * **F2 reactivo** (`test_f2_fallo_forzado.py`): NODO caído tras decidir → fallback a `LOCAL_RTX` en **2,37 s** (`X-Fallback=true`, 200, 3 tokens).
+  * **F3 preventivo** (`test_f3_preventivo.py`, N=3): NODO OFFLINE al decidir → decisión directa a `LOCAL_RTX` en **0,33 / 0,14 / 0,14 s** (`X-Fallback=false`), sin intento de conexión.
+- [x] **Etapa 10 — Concurrencia a Escala y Evaluación Final:** *(Completada — barrido final 14 sep 2026, `concurrency_sweep_v04.json`)*
+  * Niveles 1x/3x/5x/10x/20x con **100% de éxito (39/39)** y percentiles: p50 1,01 s (3x) → 5,84 s (20x); p95 1,58 s → 10,87 s.
+  * Hallazgo: sin backpressure explícito; **límite operativo recomendado ≤ 10 concurrentes** (p95 5,66 s con margen; a 20x el p95 roza el SLA).
+
+### 🏁 Cierre de la hoja de ruta (14 sep 2026)
+
+Las 10 etapas quedan completadas y evidenciadas en el [Anexo B del informe v0.4](INFORME_TECNICO_OFICIAL_v0.4.md) (F2/F3/E10) más `calibration_params.json`, `benchmark_v03_results.json`, `benchmark_kv_q8_results.json` y `unity_interactive_measurement.json` (Etapas 1–5). Criterios §7.1 cumplidos; único pendiente: backpressure explícito antes de declarar v0.3 final.
 
 ---
 
@@ -670,15 +674,12 @@ El objetivo de **v0.4** ha sido completado exitosamente mediante:
  2. regularización estadística de benchmark ($N=5$ + warmup) superando el criterio 7.3-B ($CV < 5\%$);
  3. calibración empírica offline de throughput, latencia y factor de protección ($PROTECTION\_FACTOR = 4,182$ derivado de P90);
  4. política de decisión matemática `CostEstimationPolicy` con filtro duro de VRAM segura;
- 5. validación de recuperación de recursos (0 MB fuga), tolerancia a fallos (<1s) y concurrencia hasta 5x.
- 
- **Estado actual: sistema de inferencia adaptativa distribuida formalmente calibrado y validado.**
- 
-  **Próximo objetivo: despliegue de KV Cache Q8 en el nodo secundario y evaluación interactiva con Unity.**
+  5. validación final de tolerancia a fallos (F2 reactivo 2,37 s, F3 preventivo ~0,20 s) y concurrencia a escala 1x–20x al 100% (límite operativo ≤10);
+ 6. **Etapa 4 completada:** despliegue permanente de **KV Cache Q8_0** en GT 1030 (`--cache-type-k q8_0 --cache-type-v q8_0`), liberando 60 MiB de VRAM base y aumentando el throughput a **42.7 t/s** (+3.6% a +8.5%) sin degradación ($CV < 0.5\%$).
 
-## Ruta del experimento v0.5 (presupuesto seguro de VRAM)
-
-Ver protocolo versionado en [RUTA_EXPERIMENTO.md](RUTA_EXPERIMENTO.md) (derivado de [Plan experimental.md](Plan%20experimental.md), base `v0.4-stable`): F0 baseline B=0 → F1 curva B∈{0.5..3GB} → F2 fallo forzado → F3 liberación bajo presión → F4 KV f16 vs q8_0. Resultados en `resultados/`.
+ **Estado actual: sistema de inferencia adaptativa distribuida formalmente calibrado, cuantizado y validado.**
+ 
+ **Próximo objetivo: evaluación interactiva bajo carga 3D en la estación principal (Unity Editor).**
 
 ---
 
